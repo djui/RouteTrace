@@ -10,6 +10,7 @@ struct RouteMapPreview: View {
     var lineWidth: CGFloat = 4
 
     @State private var cameraPosition: MapCameraPosition = .automatic
+    @Environment(\.colorScheme) private var colorScheme
 
     private var routeCoordinates: [CLLocationCoordinate2D] {
         routePoints.map {
@@ -45,12 +46,21 @@ struct RouteMapPreview: View {
                     .tint(.red)
             }
         }
-        .mapStyle(.standard(elevation: .realistic))
+        .mapStyle(mapStyle)
         .onAppear {
             updateCamera()
         }
         .onChange(of: routePoints.count) { _, _ in
             updateCamera()
+        }
+    }
+
+    private var mapStyle: MapStyle {
+        switch colorScheme {
+        case .dark:
+            .standard(elevation: .realistic, emphasis: .muted)
+        default:
+            .standard(elevation: .realistic)
         }
     }
 
