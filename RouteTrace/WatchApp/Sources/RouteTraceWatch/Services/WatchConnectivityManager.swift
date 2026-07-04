@@ -52,7 +52,6 @@ final class WatchConnectivityManager: NSObject {
 
             pendingTransferCount += 1
             session.transferFile(fileURL, metadata: metadata)
-            lastSyncMessage = "Activity queued for iPhone sync."
         } catch {
             lastSyncMessage = error.localizedDescription
         }
@@ -89,7 +88,6 @@ final class WatchConnectivityManager: NSObject {
         case "routePackage", RoutePackaging.routepackExtension:
             do {
                 let package = try await WatchRouteStore.shared.installRoutePackage(from: url)
-                lastSyncMessage = "Installed route \"\(package.name)\"."
                 acknowledgeRouteInstalled(package: package)
             } catch {
                 lastSyncMessage = "Failed to install route: \(error.localizedDescription)"
@@ -116,8 +114,8 @@ extension WatchConnectivityManager: WCSessionDelegate {
             isReachable = reachable
             if let message {
                 lastSyncMessage = message
-            } else if activated {
-                lastSyncMessage = "Ready to receive routes."
+            } else if !activated {
+                lastSyncMessage = nil
             }
         }
     }
@@ -153,8 +151,6 @@ extension WatchConnectivityManager: WCSessionDelegate {
             pendingTransferCount = max(0, pendingTransferCount - 1)
             if let error {
                 lastSyncMessage = "Transfer failed: \(error.localizedDescription)"
-            } else {
-                lastSyncMessage = "Activity sent to iPhone."
             }
         }
     }

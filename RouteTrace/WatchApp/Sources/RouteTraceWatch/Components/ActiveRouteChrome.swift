@@ -101,11 +101,10 @@ struct ActiveRouteChrome<Content: View>: View {
             VStack(spacing: 0) {
                 topBar
                 Spacer(minLength: 0)
-                if uiState.isMapFocus {
-                    mapFocusDoneBar
+                if !uiState.isMapFocus {
+                    ActiveRoutePageDots(selectedPage: uiState.selectedPage)
+                        .padding(.bottom, 4)
                 }
-                ActiveRoutePageDots(selectedPage: uiState.selectedPage)
-                    .padding(.bottom, 4)
             }
             .padding(.horizontal, 4)
         }
@@ -117,15 +116,30 @@ struct ActiveRouteChrome<Content: View>: View {
 
     private var topBar: some View {
         HStack(alignment: .top) {
-            ActiveRouteStatusBar(
-                showActivityIcon: !showsSystemWorkoutIndicator,
-                activityKind: viewModel.activityKind,
-                isPaused: viewModel.isPaused
-            )
-            .padding(.top, 2)
-            .padding(.leading, 2)
+            if uiState.isMapFocus {
+                Button {
+                    uiState.exitMapFocus()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(RouteAppearance.overlayText.opacity(0.85))
+                        .padding(6)
+                        .background(RouteAppearance.overlayFill, in: Circle())
+                }
+                .buttonStyle(.plain)
+            }
 
             Spacer()
+
+            if !uiState.isMapFocus {
+                ActiveRouteStatusBar(
+                    showActivityIcon: !showsSystemWorkoutIndicator,
+                    activityKind: viewModel.activityKind,
+                    isPaused: viewModel.isPaused
+                )
+                .padding(.top, 2)
+                .padding(.trailing, 2)
+            }
         }
     }
 
@@ -137,21 +151,6 @@ struct ActiveRouteChrome<Content: View>: View {
         default:
             return false
         }
-    }
-
-    private var mapFocusDoneBar: some View {
-        HStack {
-            Spacer()
-            Button("Done") {
-                uiState.exitMapFocus()
-            }
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.blue)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(RouteAppearance.overlayFill, in: Capsule())
-        }
-        .padding(.bottom, 4)
     }
 }
 
@@ -165,6 +164,34 @@ struct OfflineStatusPill: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .background(RouteAppearance.overlayFill, in: Capsule())
+    }
+}
+
+struct RouteDistanceBubble: View {
+    let covered: String
+    let remaining: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            metricRow(symbol: "location.circle.fill", value: covered)
+            metricRow(symbol: "flag.fill", value: remaining)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(RouteAppearance.overlayFill, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private func metricRow(symbol: String, value: String) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: symbol)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(RouteAppearance.overlayText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
     }
 }
 

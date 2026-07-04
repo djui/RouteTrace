@@ -260,6 +260,16 @@ public enum RouteFormatting {
         return String(format: "%.1f km/h", metersPerSecond * 3.6)
     }
 
+    public static func speedOrPace(_ metersPerSecond: Double?, mode: SpeedDisplayMode) -> String {
+        guard let metersPerSecond, metersPerSecond > 0 else { return "—" }
+        switch mode {
+        case .pace:
+            return pace(secondsPerKm: 1000.0 / metersPerSecond)
+        case .speed:
+            return speed(metersPerSecond)
+        }
+    }
+
     public static func duration(_ seconds: TimeInterval) -> String {
         let total = Int(seconds)
         let hours = total / 3600

@@ -30,6 +30,21 @@ final class WatchPreferences {
         didSet { UserDefaults.standard.set(navigationNotificationsEnabled, forKey: Keys.navigationNotificationsEnabled) }
     }
 
+    var runningSpeedDisplay: SpeedDisplayMode {
+        didSet { UserDefaults.standard.set(runningSpeedDisplay.rawValue, forKey: Keys.runningSpeedDisplay) }
+    }
+
+    var cyclingSpeedDisplay: SpeedDisplayMode {
+        didSet { UserDefaults.standard.set(cyclingSpeedDisplay.rawValue, forKey: Keys.cyclingSpeedDisplay) }
+    }
+
+    func speedDisplayMode(for activityKind: ActivityKind) -> SpeedDisplayMode {
+        switch activityKind.speedCategory {
+        case .running: runningSpeedDisplay
+        case .cycling: cyclingSpeedDisplay
+        }
+    }
+
     private enum Keys {
         static let batteryMode = "watch.batteryMode"
         static let mapDisplayMode = "watch.mapDisplayMode"
@@ -37,6 +52,8 @@ final class WatchPreferences {
         static let mapFollowMode = "watch.mapFollowMode"
         static let useHealthKitWorkouts = "watch.useHealthKitWorkouts"
         static let navigationNotificationsEnabled = "watch.navigationNotificationsEnabled"
+        static let runningSpeedDisplay = "watch.runningSpeedDisplay"
+        static let cyclingSpeedDisplay = "watch.cyclingSpeedDisplay"
     }
 
     private init() {
@@ -58,6 +75,12 @@ final class WatchPreferences {
         } else {
             navigationNotificationsEnabled = UserDefaults.standard.bool(forKey: Keys.navigationNotificationsEnabled)
         }
+        runningSpeedDisplay = SpeedDisplayMode(
+            rawValue: UserDefaults.standard.string(forKey: Keys.runningSpeedDisplay) ?? ""
+        ) ?? .pace
+        cyclingSpeedDisplay = SpeedDisplayMode(
+            rawValue: UserDefaults.standard.string(forKey: Keys.cyclingSpeedDisplay) ?? ""
+        ) ?? .speed
     }
 }
 
@@ -102,6 +125,21 @@ struct SettingsView: View {
                 Toggle("Navigation Alerts", isOn: $preferences.navigationNotificationsEnabled)
             } header: {
                 Text("Notifications")
+            }
+
+            Section {
+                Picker("Running", selection: $preferences.runningSpeedDisplay) {
+                    ForEach(SpeedDisplayMode.allCases) { mode in
+                        Text(mode.displayName).tag(mode)
+                    }
+                }
+                Picker("Cycling", selection: $preferences.cyclingSpeedDisplay) {
+                    ForEach(SpeedDisplayMode.allCases) { mode in
+                        Text(mode.displayName).tag(mode)
+                    }
+                }
+            } header: {
+                Text("Speed")
             }
         }
         .navigationTitle("Settings")

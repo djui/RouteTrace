@@ -59,6 +59,20 @@ public enum ActivityKind: String, Codable, Sendable, CaseIterable, Identifiable 
         case .gravelCycling: 100
         }
     }
+
+    public var speedCategory: SpeedCategory {
+        switch self {
+        case .running, .trailRunning: .running
+        case .gravelCycling, .roadCycling: .cycling
+        }
+    }
+
+    public var defaultSpeedDisplayMode: SpeedDisplayMode {
+        switch speedCategory {
+        case .running: .pace
+        case .cycling: .speed
+        }
+    }
 }
 
 public struct GeoCoordinate: Codable, Sendable, Hashable {

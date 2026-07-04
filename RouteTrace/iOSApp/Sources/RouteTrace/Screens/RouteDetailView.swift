@@ -26,14 +26,20 @@ struct RouteDetailView: View {
     @State private var errorMessage: String?
     @State private var successMessage: String?
     @State private var infoMessage: String?
+    @State private var isMapFullscreenPresented = false
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 if let routePackage {
-                    RouteMapPreview(routePoints: routePackage.route)
-                        .frame(height: 260)
-                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                    Button {
+                        isMapFullscreenPresented = true
+                    } label: {
+                        RouteMapPreview(routePoints: routePackage.route)
+                            .frame(height: 260)
+                            .clipShape(RoundedRectangle(cornerRadius: 16))
+                    }
+                    .buttonStyle(.plain)
                 } else if isLoading {
                     ProgressView()
                         .frame(maxWidth: .infinity, minHeight: 260)
@@ -44,15 +50,8 @@ struct RouteDetailView: View {
                 offlineMapSection
             }
             .padding()
-            .padding(.bottom, 80)
+            .padding(.bottom, 20)
         }
-        #if canImport(WatchConnectivity)
-        .overlay(alignment: .bottomTrailing) {
-            sendToWatchFAB
-                .padding(.trailing, 20)
-                .padding(.bottom, 20)
-        }
-        #endif
         .navigationTitle(route.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -63,6 +62,16 @@ struct RouteDetailView: View {
         .sheet(isPresented: $isSharePresented, onDismiss: cleanupExport) {
             if let exportURL {
                 ShareSheet(items: [exportURL])
+            }
+        }
+        .fullScreenCover(isPresented: $isMapFullscreenPresented) {
+            if let routePackage {
+                ActivityMapFullscreenView(
+                    routeName: route.name,
+                    distanceLabel: RouteFormatting.distance(route.distanceMeters),
+                    routePoints: routePackage.route,
+                    trackPoints: []
+                )
             }
         }
         .confirmationDialog(
@@ -189,66 +198,29 @@ struct RouteDetailView: View {
 
     private var routeActionsMenu: some View {
         Menu {
-            Button {
-                shareRoute()
-            } label: {
-                Label("Share", systemImage: "square.and.arrow.up")
-            }
-            .disabled(isExporting || routePackage == nil)
-
-            Button {
-                Task { await buildOfflinePack() }
-            } label: {
-                Label(offlineMapActionLabel, systemImage: "map.fill")
-            }
-            .disabled(isBuildingOfflinePack)
-
-            #if canImport(WatchConnectivity)
-            Button {
-                Task { await sendToWatch() }
-            } label: {
-                Label("Send to Apple Watch", systemImage: "applewatch.and.arrow.forward")
-            }
-            .disabled(isSendingToWatch)
-            #endif
-
-            Divider()
-
-            Button(role: .destructive) {
-                showDeleteConfirmation = true
-            } label: {
-                Label("Delete", systemImage: "trash")
-            }
+            RouteActionMenuItems(
+                route: route,
+                routePackage: routePackage,
+                isExporting: isExporting,
+                isBuildingOfflinePack: isBuildingOfflinePack,
+                isSendingToWatch: isSendingToWatch,
+                onRebuildOfflineMap: { Task { await buildOfflinePack() } },
+                onSendToWatch: sendToWatchAction,
+                onShare: shareRoute,
+                onDelete: { showDeleteConfirmation = true }
+            )
         } label: {
-            Label("More", systemImage: "ellipsis.circle")
+            Label("More", systemImage: "ellipsis")
         }
         .disabled(isExporting)
     }
 
-    private var offlineMapActionLabel: String {
-        route.offlineStatus == .missing ? "Build Offline Map" : "Rebuild Offline Map"
-    }
-
     #if canImport(WatchConnectivity)
-    private var sendToWatchFAB: some View {
-        Button {
-            Task { await sendToWatch() }
-        } label: {
-            Group {
-                if isSendingToWatch {
-                    ProgressView()
-                } else {
-                    Image(systemName: "applewatch.and.arrow.forward")
-                        .font(.title3.weight(.semibold))
-                }
-            }
-            .frame(width: 56, height: 56)
-        }
-        .buttonStyle(.borderedProminent)
-        .buttonBorderShape(.circle)
-        .disabled(isSendingToWatch)
-        .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
+    private var sendToWatchAction: (() -> Void)? {
+        { Task { await sendToWatch() } }
     }
+    #else
+    private var sendToWatchAction: (() -> Void)? { nil }
     #endif
 
     @MainActor
@@ -287,20 +259,10 @@ struct RouteDetailView: View {
             routePackage = try? routeStore.loadRoutePackage(for: route)
             infoMessage = RouteStoreError.offlinePackSavedArchiveFailed.localizedDescription
         } catch {
-            errorMessage = offlineMapBuildErrorMessage(for: error)
+            errorMessage = RouteActions.offlineMapBuildErrorMessage(for: error)
         }
     }
 
-    private func offlineMapBuildErrorMessage(for error: Error) -> String {
-        if let buildError = error as? OfflinePackBuilder.BuildError {
-            return buildError.localizedDescription
-        }
-        if (error as NSError).domain == NSCocoaErrorDomain,
-           (error as NSError).code == NSFileReadNoSuchFileError {
-            return "Failed to package the offline map for Watch transfer. Try building again."
-        }
-        return error.localizedDescription
-    }
 
     @MainActor
     private func deleteOfflinePack() async {
@@ -343,11 +305,7 @@ struct RouteDetailView: View {
         defer { isExporting = false }
 
         do {
-            let gpx = GPXExporter.exportRoute(routePackage)
-            let url = RouteTracePaths.routesRoot
-                .appendingPathComponent("\(route.id.uuidString)-export.gpx")
-            try gpx.write(to: url, atomically: true, encoding: .utf8)
-            exportURL = url
+            exportURL = try RouteActions.exportGPXURL(for: routePackage, routeID: route.id)
             isSharePresented = true
         } catch {
             errorMessage = error.localizedDescription
@@ -355,9 +313,7 @@ struct RouteDetailView: View {
     }
 
     private func cleanupExport() {
-        if let exportURL {
-            try? FileManager.default.removeItem(at: exportURL)
-        }
+        RouteActions.cleanupExport(at: exportURL)
         exportURL = nil
     }
 

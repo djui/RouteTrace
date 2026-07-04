@@ -21,12 +21,18 @@ struct OverviewView: View {
             Map(position: $cameraPosition, interactionModes: compact ? [] : .all) {
                 if let route = viewModel.routePackage {
                     MapPolyline(coordinates: ActiveRouteMapOverlay.routeCoordinates(route))
-                        .stroke(.blue.opacity(0.6), lineWidth: compact ? 2 : 3)
+                        .stroke(
+                            .blue.opacity(0.6),
+                            style: StrokeStyle(lineWidth: compact ? 2 : 3, lineCap: .round, lineJoin: .round)
+                        )
 
                     let actual = ActiveRouteMapOverlay.actualTrackCoordinates(from: viewModel)
                     if !actual.isEmpty {
                         MapPolyline(coordinates: actual)
-                            .stroke(.green, lineWidth: compact ? 2 : 3)
+                            .stroke(
+                                .green,
+                                style: StrokeStyle(lineWidth: compact ? 2 : 3, lineCap: .round, lineJoin: .round)
+                            )
                     }
 
                     ForEach(viewModel.recording.offRouteEvents) { event in

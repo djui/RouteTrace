@@ -115,15 +115,6 @@ struct RouteListView: View {
             .refreshable {
                 await routeStore.reload()
             }
-            .overlay(alignment: .bottom) {
-                if let message = connectivity.lastSyncMessage {
-                    Text(message)
-                        .font(.caption2)
-                        .padding(6)
-                        .background(.ultraThinMaterial, in: Capsule())
-                        .padding(.bottom, 4)
-                }
-            }
             .task {
                 guard !didAttemptRestore else { return }
                 didAttemptRestore = true

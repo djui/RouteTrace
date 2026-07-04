@@ -10,7 +10,10 @@ struct RoutePreviewMap: View {
     var body: some View {
         Map(position: $cameraPosition, interactionModes: []) {
             MapPolyline(coordinates: ActiveRouteMapOverlay.routeCoordinates(route))
-                .stroke(.blue, lineWidth: 3)
+                .stroke(
+                    .blue,
+                    style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round)
+                )
         }
         .mapStyle(.standard(elevation: .flat, emphasis: .muted))
         .onAppear { fitRoute() }

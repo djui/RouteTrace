@@ -8,6 +8,8 @@ struct DirectionsView: View {
 
     var body: some View {
         VStack(spacing: 12) {
+            Spacer(minLength: 8)
+
             if let snapshot = viewModel.navigationSnapshot, let cue = snapshot.nextCue {
                 Image(systemName: ActiveRouteMapOverlay.cueSymbol(for: cue.kind))
                     .font(.system(size: 36))
@@ -55,6 +57,8 @@ struct DirectionsView: View {
                         .foregroundStyle(.orange)
                 }
             }
+
+            Spacer(minLength: 0)
         }
         .padding()
         .frame(maxWidth: .infinity, maxHeight: .infinity)

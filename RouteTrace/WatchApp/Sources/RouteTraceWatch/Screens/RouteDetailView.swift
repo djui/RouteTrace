@@ -7,6 +7,7 @@ struct RouteDetailView: View {
 
     @Environment(WatchRouteStore.self) private var routeStore
     @Environment(WatchPreferences.self) private var preferences
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dismiss) private var dismiss
 
     @State private var selectedActivityKind: ActivityKind
@@ -32,8 +33,6 @@ struct RouteDetailView: View {
             Section("Route") {
                 LabeledContent("Distance", value: RouteFormatting.distance(route.distanceMeters))
                 LabeledContent("Elevation", value: RouteFormatting.elevation(route.elevationGainMeters))
-                LabeledContent("Points", value: "\(route.simplifiedPointCount)")
-                LabeledContent("Cues", value: "\(route.cues.count)")
                 LabeledContent("Offline Map", value: offlineLabel)
             }
 
@@ -63,9 +62,7 @@ struct RouteDetailView: View {
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            startRouteControl
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
+            startRouteBottomBar
         }
         .navigationTitle(route.name)
         .navigationBarTitleDisplayMode(.inline)
@@ -99,6 +96,26 @@ struct RouteDetailView: View {
         case .partial: "Partial"
         case .missing: "Not available"
         }
+    }
+
+    @ViewBuilder
+    private var startRouteBottomBar: some View {
+        startRouteControl
+            .padding(.horizontal, 4)
+            .padding(.top, 4)
+            .frame(maxWidth: .infinity)
+            .background {
+                LinearGradient(
+                    colors: [
+                        RouteAppearance.canvas(for: colorScheme).opacity(0),
+                        RouteAppearance.canvas(for: colorScheme),
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .ignoresSafeArea(edges: .bottom)
+            }
+            .ignoresSafeArea(edges: .bottom)
     }
 
     @ViewBuilder

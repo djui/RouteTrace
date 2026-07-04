@@ -5,7 +5,12 @@ struct MetricsView: View {
     @Bindable var viewModel: ActiveRouteViewModel
     @Bindable var uiState: ActiveRouteUIState
 
+    @Environment(WatchPreferences.self) private var preferences
     @Environment(\.isLuminanceReduced) private var isLuminanceReduced
+
+    private var speedMode: SpeedDisplayMode {
+        preferences.speedDisplayMode(for: viewModel.activityKind)
+    }
 
     var body: some View {
         if isLuminanceReduced {
@@ -14,14 +19,18 @@ struct MetricsView: View {
             ScrollView {
                 VStack(spacing: 12) {
                     metricRow("Remaining", RouteFormatting.distance(viewModel.navigationSnapshot?.distanceRemainingMeters ?? 0), "arrow.right")
-                    metricRow("Speed", RouteFormatting.speed(viewModel.navigationSnapshot?.currentSpeedMetersPerSecond), "speedometer")
+                    metricRow(
+                        speedMode.shortLabel,
+                        RouteFormatting.speedOrPace(viewModel.navigationSnapshot?.currentSpeedMetersPerSecond, mode: speedMode),
+                        "speedometer"
+                    )
                     metricRow("Elevation Gain", RouteFormatting.elevation(viewModel.recording.elevationGainMeters), "arrow.up.right")
                     metricRow("Heart Rate", heartRateLabel, "heart.fill")
                     metricRow("Off Route Events", "\(viewModel.recording.offRouteEvents.count)", "location.slash")
                 }
                 .padding(.horizontal, 8)
-                .padding(.top, 28)
-                .padding(.bottom, 36)
+                .padding(.top, 10)
+                .padding(.bottom, 12)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .routeScreenBackground()

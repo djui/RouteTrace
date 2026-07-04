@@ -124,4 +124,101 @@ final class RouteTraceSharedTests: XCTestCase {
         XCTAssertTrue(fileManager.fileExists(atPath: installedTileURL.path))
         XCTAssertEqual(try Data(contentsOf: installedTileURL), tileData)
     }
+
+    func testActivityTrackStatisticsGPSDistance() {
+        let base = Date(timeIntervalSince1970: 1_700_000_000)
+        let points = [
+            TrackPoint(timestamp: base, latitude: 48.8566, longitude: 2.3522, horizontalAccuracyMeters: 5),
+            TrackPoint(timestamp: base.addingTimeInterval(10), latitude: 48.8570, longitude: 2.3530, horizontalAccuracyMeters: 5),
+            TrackPoint(timestamp: base.addingTimeInterval(20), latitude: 48.8575, longitude: 2.3540, horizontalAccuracyMeters: 5)
+        ]
+        let distance = ActivityTrackStatistics.gpsDistanceMeters(from: points)
+        XCTAssertGreaterThan(distance, 100)
+        XCTAssertLessThan(distance, 500)
+    }
+
+    func testActivityTrackStatisticsElevationGain() {
+        let base = Date(timeIntervalSince1970: 1_700_000_000)
+        let points = [
+            TrackPoint(timestamp: base, latitude: 48.8566, longitude: 2.3522, altitudeMeters: 100, horizontalAccuracyMeters: 5),
+            TrackPoint(timestamp: base.addingTimeInterval(10), latitude: 48.8570, longitude: 2.3530, altitudeMeters: 110, horizontalAccuracyMeters: 5),
+            TrackPoint(timestamp: base.addingTimeInterval(20), latitude: 48.8575, longitude: 2.3540, altitudeMeters: 105, horizontalAccuracyMeters: 5)
+        ]
+        let gain = ActivityTrackStatistics.elevationGainMeters(from: points, fallback: nil)
+        XCTAssertEqual(gain ?? 0, 10, accuracy: 0.01)
+    }
+
+    func testTrackSegmentSplitterDetectsTimeGap() {
+        let base = Date(timeIntervalSince1970: 1_700_000_000)
+        let points = [
+            TrackPoint(timestamp: base, latitude: 48.8566, longitude: 2.3522, horizontalAccuracyMeters: 5),
+            TrackPoint(timestamp: base.addingTimeInterval(10), latitude: 48.8570, longitude: 2.3530, horizontalAccuracyMeters: 5),
+            TrackPoint(timestamp: base.addingTimeInterval(130), latitude: 48.8600, longitude: 2.3600, horizontalAccuracyMeters: 5),
+            TrackPoint(timestamp: base.addingTimeInterval(140), latitude: 48.8605, longitude: 2.3610, horizontalAccuracyMeters: 5)
+        ]
+        let segments = TrackSegmentSplitter.continuousSegments(from: points)
+        XCTAssertEqual(segments.count, 2)
+        XCTAssertEqual(segments[0].count, 2)
+        XCTAssertEqual(segments[1].count, 2)
+
+        let renderSegments = TrackSegmentSplitter.segments(from: points)
+        XCTAssertEqual(renderSegments.filter { !$0.isGapConnector }.count, 2)
+        XCTAssertEqual(renderSegments.filter(\.isGapConnector).count, 1)
+    }
+
+    func testTrackSegmentSplitterDetectsSpatialJump() {
+        let base = Date(timeIntervalSince1970: 1_700_000_000)
+        let points = [
+            TrackPoint(timestamp: base, latitude: 48.8566, longitude: 2.3522, horizontalAccuracyMeters: 5),
+            TrackPoint(timestamp: base.addingTimeInterval(5), latitude: 48.8570, longitude: 2.3530, horizontalAccuracyMeters: 5),
+            TrackPoint(timestamp: base.addingTimeInterval(10), latitude: 48.8700, longitude: 2.3700, horizontalAccuracyMeters: 5)
+        ]
+        let segments = TrackSegmentSplitter.continuousSegments(from: points)
+        XCTAssertEqual(segments.count, 2)
+    }
+
+    func testGPXExportActivityEmitsSeparateTrackSegments() {
+        let base = Date(timeIntervalSince1970: 1_700_000_000)
+        let activity = ActivityRecording(
+            routeId: UUID(),
+            routeName: "Gap Test",
+            startedAt: base,
+            endedAt: base.addingTimeInterval(200),
+            activityKind: .running,
+            trackPoints: [
+                TrackPoint(timestamp: base, latitude: 48.8566, longitude: 2.3522, horizontalAccuracyMeters: 5),
+                TrackPoint(timestamp: base.addingTimeInterval(10), latitude: 48.8570, longitude: 2.3530, horizontalAccuracyMeters: 5),
+                TrackPoint(timestamp: base.addingTimeInterval(130), latitude: 48.8600, longitude: 2.3600, horizontalAccuracyMeters: 5),
+                TrackPoint(timestamp: base.addingTimeInterval(140), latitude: 48.8605, longitude: 2.3610, horizontalAccuracyMeters: 5)
+            ]
+        )
+        let gpx = GPXExporter.exportActivity(activity, route: nil)
+        let trksegCount = gpx.components(separatedBy: "<trkseg>").count - 1
+        XCTAssertEqual(trksegCount, 2)
+    }
+
+    func testGPXExportActivityContinuousTrackHasSingleSegment() {
+        let base = Date(timeIntervalSince1970: 1_700_000_000)
+        let activity = ActivityRecording(
+            routeId: UUID(),
+            routeName: "Continuous",
+            startedAt: base,
+            activityKind: .running,
+            trackPoints: [
+                TrackPoint(timestamp: base, latitude: 48.8566, longitude: 2.3522, horizontalAccuracyMeters: 5),
+                TrackPoint(timestamp: base.addingTimeInterval(10), latitude: 48.8570, longitude: 2.3530, horizontalAccuracyMeters: 5)
+            ]
+        )
+        let gpx = GPXExporter.exportActivity(activity, route: nil)
+        let trksegCount = gpx.components(separatedBy: "<trkseg>").count - 1
+        XCTAssertEqual(trksegCount, 1)
+    }
+
+    func testActivityTrackStatisticsAverageSpeed() {
+        let speed = ActivityTrackStatistics.averageSpeedMetersPerSecond(
+            gpsDistanceMeters: 5000,
+            elapsedSeconds: 1000
+        )
+        XCTAssertEqual(speed ?? 0, 5, accuracy: 0.01)
+    }
 }

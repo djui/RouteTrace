@@ -180,30 +180,50 @@ struct NavigationGuidanceBar: View {
     let isOffRoute: Bool
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 6) {
             Image(systemName: ActiveRouteMapOverlay.cueSymbol(for: cue.kind))
-                .font(.title3.weight(.semibold))
+                .font(.subheadline.weight(.semibold))
                 .foregroundStyle(isOffRoute ? .orange : .primary)
-                .frame(width: 28)
+                .frame(width: 20)
 
-            VStack(alignment: .leading, spacing: 2) {
-                if let distanceMeters {
-                    Text(RouteFormatting.distance(distanceMeters))
-                        .font(.headline.weight(.bold))
-                        .lineLimit(1)
-                }
-                Text(cue.instruction)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
+            if let distanceMeters {
+                Text(RouteFormatting.distance(distanceMeters))
+                    .font(.subheadline.weight(.bold))
+                    .lineLimit(1)
             }
+
+            Text(cue.instruction)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
 
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
         .frame(maxWidth: .infinity)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+    }
+}
+
+struct OutlinedRoutePolyline: MapContent {
+    let coordinates: [CLLocationCoordinate2D]
+    let color: Color
+
+    var body: some MapContent {
+        if coordinates.count >= 2 {
+            MapPolyline(coordinates: coordinates)
+                .stroke(
+                    RouteAppearance.routeOutlineColor,
+                    style: StrokeStyle(lineWidth: RouteAppearance.routeOutlineWidth, lineCap: .round, lineJoin: .round)
+                )
+            MapPolyline(coordinates: coordinates)
+                .stroke(
+                    color,
+                    style: StrokeStyle(lineWidth: RouteAppearance.routeStrokeWidth, lineCap: .round, lineJoin: .round)
+                )
+        }
     }
 }
 
@@ -212,17 +232,7 @@ struct OutlinedRoutePolylines: MapContent {
     let remaining: [CLLocationCoordinate2D]
 
     var body: some MapContent {
-        if traveled.count >= 2 {
-            MapPolyline(coordinates: traveled)
-                .stroke(.black.opacity(0.5), lineWidth: 5)
-            MapPolyline(coordinates: traveled)
-                .stroke(.green, lineWidth: 3)
-        }
-        if remaining.count >= 2 {
-            MapPolyline(coordinates: remaining)
-                .stroke(.black.opacity(0.5), lineWidth: 5)
-            MapPolyline(coordinates: remaining)
-                .stroke(.blue, lineWidth: 3)
-        }
+        OutlinedRoutePolyline(coordinates: traveled, color: .green)
+        OutlinedRoutePolyline(coordinates: remaining, color: .blue)
     }
 }

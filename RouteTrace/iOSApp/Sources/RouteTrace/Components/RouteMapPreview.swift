@@ -7,6 +7,7 @@ struct RouteMapPreview: View {
     var trackPoints: [TrackPoint] = []
     var lineColor: Color = .blue
     var trackColor: Color = .green
+    var gapColor: Color = .secondary.opacity(0.6)
     var lineWidth: CGFloat = 4
 
     @State private var cameraPosition: MapCameraPosition = .automatic
@@ -18,22 +19,40 @@ struct RouteMapPreview: View {
         }
     }
 
-    private var trackCoordinates: [CLLocationCoordinate2D] {
-        trackPoints.map {
-            CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)
-        }
+    private var trackSegments: [TrackSegment] {
+        guard trackPoints.count >= 2 else { return [] }
+        return TrackSegmentSplitter.segments(from: trackPoints)
     }
 
     var body: some View {
         Map(position: $cameraPosition) {
             if routeCoordinates.count >= 2 {
                 MapPolyline(coordinates: routeCoordinates)
-                    .stroke(lineColor, lineWidth: lineWidth)
+                    .stroke(
+                        lineColor,
+                        style: StrokeStyle(lineWidth: lineWidth, lineCap: .round, lineJoin: .round)
+                    )
             }
 
-            if trackCoordinates.count >= 2 {
-                MapPolyline(coordinates: trackCoordinates)
-                    .stroke(trackColor, lineWidth: lineWidth - 1)
+            ForEach(Array(trackSegments.enumerated()), id: \.offset) { _, segment in
+                let coordinates = segment.coordinates.map {
+                    CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)
+                }
+                if coordinates.count >= 2 {
+                    if segment.isGapConnector {
+                        MapPolyline(coordinates: coordinates)
+                            .stroke(
+                                gapColor,
+                                style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [1, 4])
+                            )
+                    } else {
+                        MapPolyline(coordinates: coordinates)
+                            .stroke(
+                                trackColor,
+                                style: StrokeStyle(lineWidth: lineWidth - 1, lineCap: .round, lineJoin: .round)
+                            )
+                    }
+                }
             }
 
             if let start = routeCoordinates.first {
@@ -53,6 +72,9 @@ struct RouteMapPreview: View {
         .onChange(of: routePoints.count) { _, _ in
             updateCamera()
         }
+        .onChange(of: trackPoints.count) { _, _ in
+            updateCamera()
+        }
     }
 
     private var mapStyle: MapStyle {
@@ -65,6 +87,9 @@ struct RouteMapPreview: View {
     }
 
     private func updateCamera() {
+        let trackCoordinates = trackPoints.map {
+            CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)
+        }
         let allCoordinates = routeCoordinates + trackCoordinates
         guard !allCoordinates.isEmpty else { return }
 

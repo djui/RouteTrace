@@ -246,4 +246,21 @@ public struct OfflineTileStore: Sendable {
         }
         return nil
     }
+
+    public func tileAtZoom(
+        for coordinate: GeoCoordinate,
+        preferredZoom: Int,
+        manifest: OfflineMapManifest?
+    ) -> ResolvedTile? {
+        if let manifest {
+            let clamped = min(manifest.maxZoom, max(manifest.minZoom, preferredZoom))
+            for zoom in stride(from: clamped, through: manifest.minZoom, by: -1) {
+                let tile = tilesCovering(coordinate: coordinate, zoom: zoom)[0]
+                if tileExists(tile) {
+                    return ResolvedTile(tile: tile, zoom: zoom, usedFallback: zoom < clamped)
+                }
+            }
+        }
+        return bestAvailableTile(for: coordinate, manifest: manifest)
+    }
 }

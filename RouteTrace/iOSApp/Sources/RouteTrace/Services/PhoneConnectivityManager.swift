@@ -229,6 +229,13 @@ extension PhoneConnectivityManager: WCSessionDelegate {
     }
     #endif
 
+    nonisolated func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
+        let incoming = parseIncomingWatchMessage(message)
+        Task { @MainActor in
+            _ = handleIncomingWatchMessage(incoming)
+        }
+    }
+
     nonisolated func session(
         _ session: WCSession,
         didReceiveMessage message: [String: Any],

@@ -39,21 +39,24 @@ public enum GPXExporter {
             "    <time>\(iso8601(activity.startedAt))</time>",
             "  </metadata>",
             "  <trk>",
-            "    <name>\(escape(activity.routeName))</name>",
-            "    <trkseg>"
+            "    <name>\(escape(activity.routeName))</name>"
         ]
 
-        for point in activity.trackPoints {
-            lines.append("      <trkpt lat=\"\(point.latitude)\" lon=\"\(point.longitude)\">")
-            if let altitude = point.altitudeMeters {
-                lines.append("        <ele>\(altitude)</ele>")
+        let segments = TrackSegmentSplitter.continuousSegments(from: activity.trackPoints)
+        for segment in segments {
+            lines.append("    <trkseg>")
+            for point in segment {
+                lines.append("      <trkpt lat=\"\(point.latitude)\" lon=\"\(point.longitude)\">")
+                if let altitude = point.altitudeMeters {
+                    lines.append("        <ele>\(altitude)</ele>")
+                }
+                lines.append("        <time>\(iso8601(point.timestamp))</time>")
+                lines.append("      </trkpt>")
             }
-            lines.append("        <time>\(iso8601(point.timestamp))</time>")
-            lines.append("      </trkpt>")
+            lines.append("    </trkseg>")
         }
 
         lines += [
-            "    </trkseg>",
             "  </trk>",
             "</gpx>"
         ]

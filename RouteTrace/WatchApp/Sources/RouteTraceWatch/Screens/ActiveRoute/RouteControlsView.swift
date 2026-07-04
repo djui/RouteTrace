@@ -12,7 +12,7 @@ struct RouteControlsView: View {
             ActiveRouteDimmedSummary(viewModel: viewModel)
         } else {
             VStack(spacing: 12) {
-                Spacer(minLength: 20)
+                Spacer(minLength: 8)
 
                 Button {
                     viewModel.togglePauseResume(preferences: preferences)
@@ -37,9 +37,10 @@ struct RouteControlsView: View {
                 .buttonStyle(.borderedProminent)
                 .tint(.red)
 
-                Spacer(minLength: 20)
+                Spacer(minLength: 8)
             }
             .padding(.horizontal, 12)
+            .padding(.top, 8)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .routeScreenBackground()
         }

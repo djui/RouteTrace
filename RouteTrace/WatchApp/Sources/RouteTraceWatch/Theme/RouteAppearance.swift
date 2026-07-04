@@ -53,6 +53,10 @@ enum RouteAppearance {
     static func dimmedOverlay(for colorScheme: ColorScheme) -> Color {
         canvas(for: colorScheme).opacity(colorScheme == .dark ? 1 : 0.2)
     }
+
+    static let routeOutlineWidth: CGFloat = 7
+    static let routeStrokeWidth: CGFloat = 4.5
+    static let routeOutlineColor = Color.black.opacity(0.55)
 }
 
 extension View {

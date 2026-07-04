@@ -105,6 +105,39 @@ public struct ActivityRecording: Codable, Sendable, Identifiable {
     }
 }
 
+public enum SpeedDisplayMode: String, Codable, Sendable, CaseIterable, Identifiable {
+    case pace
+    case speed
+
+    public var id: String { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .pace: "Pace (min/km)"
+        case .speed: "Speed (km/h)"
+        }
+    }
+
+    public var shortLabel: String {
+        switch self {
+        case .pace: "Pace"
+        case .speed: "Speed"
+        }
+    }
+
+    public var averageLabel: String {
+        switch self {
+        case .pace: "Avg Pace"
+        case .speed: "Avg Speed"
+        }
+    }
+}
+
+public enum SpeedCategory: String, Codable, Sendable {
+    case running
+    case cycling
+}
+
 public enum BatteryMode: String, Codable, Sendable, CaseIterable, Identifiable {
     case normal
     case saver
