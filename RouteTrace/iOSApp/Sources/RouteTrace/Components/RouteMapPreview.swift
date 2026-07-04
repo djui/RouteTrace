@@ -1,0 +1,81 @@
+import MapKit
+import SwiftUI
+import RouteTraceShared
+
+struct RouteMapPreview: View {
+    let routePoints: [RoutePoint]
+    var trackPoints: [TrackPoint] = []
+    var lineColor: Color = .blue
+    var trackColor: Color = .green
+    var lineWidth: CGFloat = 4
+
+    @State private var cameraPosition: MapCameraPosition = .automatic
+
+    private var routeCoordinates: [CLLocationCoordinate2D] {
+        routePoints.map {
+            CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)
+        }
+    }
+
+    private var trackCoordinates: [CLLocationCoordinate2D] {
+        trackPoints.map {
+            CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)
+        }
+    }
+
+    var body: some View {
+        Map(position: $cameraPosition) {
+            if routeCoordinates.count >= 2 {
+                MapPolyline(coordinates: routeCoordinates)
+                    .stroke(lineColor, lineWidth: lineWidth)
+            }
+
+            if trackCoordinates.count >= 2 {
+                MapPolyline(coordinates: trackCoordinates)
+                    .stroke(trackColor, lineWidth: lineWidth - 1)
+            }
+
+            if let start = routeCoordinates.first {
+                Marker("Start", coordinate: start)
+                    .tint(.green)
+            }
+
+            if let finish = routeCoordinates.last, routeCoordinates.count > 1 {
+                Marker("Finish", coordinate: finish)
+                    .tint(.red)
+            }
+        }
+        .mapStyle(.standard(elevation: .realistic))
+        .onAppear {
+            updateCamera()
+        }
+        .onChange(of: routePoints.count) { _, _ in
+            updateCamera()
+        }
+    }
+
+    private func updateCamera() {
+        let allCoordinates = routeCoordinates + trackCoordinates
+        guard !allCoordinates.isEmpty else { return }
+
+        if allCoordinates.count == 1, let coordinate = allCoordinates.first {
+            cameraPosition = .region(
+                MKCoordinateRegion(
+                    center: coordinate,
+                    span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+                )
+            )
+            return
+        }
+
+        var rect = MKMapRect.null
+        for coordinate in allCoordinates {
+            let point = MKMapPoint(coordinate)
+            rect = rect.isNull ? MKMapRect(origin: point, size: MKMapSize(width: 0, height: 0)) : rect.union(MKMapRect(origin: point, size: MKMapSize(width: 0, height: 0)))
+        }
+
+        let padding = rect.size.width * 0.2
+        let padded = rect.insetBy(dx: -padding, dy: -padding)
+        cameraPosition = .rect(padded)
+    }
+}

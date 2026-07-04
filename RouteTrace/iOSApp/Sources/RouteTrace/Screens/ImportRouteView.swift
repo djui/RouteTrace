@@ -1,0 +1,161 @@
+import SwiftUI
+import SwiftData
+import UniformTypeIdentifiers
+import RouteTraceShared
+
+struct ImportRouteView: View {
+    @ObservedObject var routeStore: RouteStore
+    @ObservedObject var incomingGPX: IncomingGPXCoordinator
+    let initialFileURL: URL?
+
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var importService: RouteImportService?
+    @State private var settings: AppSettingsEntity?
+
+    @State private var isImporterPresented = false
+    @State private var selectedFileURL: URL?
+    @State private var routeName = ""
+    @State private var selectedActivity: ActivityKind = .running
+    @State private var buildOfflinePack = false
+    @State private var isImporting = false
+    @State private var errorMessage: String?
+
+    init(
+        routeStore: RouteStore,
+        incomingGPX: IncomingGPXCoordinator,
+        initialFileURL: URL? = nil
+    ) {
+        self.routeStore = routeStore
+        self.incomingGPX = incomingGPX
+        self.initialFileURL = initialFileURL
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("GPX File") {
+                    Button {
+                        isImporterPresented = true
+                    } label: {
+                        Label(
+                            selectedFileURL?.lastPathComponent ?? "Choose GPX File",
+                            systemImage: "doc.badge.plus"
+                        )
+                    }
+
+                    TextField("Route Name", text: $routeName)
+                        .textInputAutocapitalization(.words)
+                }
+
+                Section("Activity") {
+                    Picker("Activity Type", selection: $selectedActivity) {
+                        ForEach(ActivityKind.allCases) { kind in
+                            Label(kind.displayName, systemImage: kind.systemImage).tag(kind)
+                        }
+                    }
+                }
+
+                Section("Options") {
+                    Toggle("Build Offline Map Pack", isOn: $buildOfflinePack)
+                }
+
+                if let errorMessage {
+                    Section {
+                        Text(errorMessage)
+                            .foregroundStyle(.red)
+                    }
+                }
+            }
+            .navigationTitle("Import Route")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        incomingGPX.clearPending()
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        Task { await saveRoute() }
+                    }
+                    .disabled(selectedFileURL == nil || isImporting)
+                }
+            }
+            .fileImporter(
+                isPresented: $isImporterPresented,
+                allowedContentTypes: [GPXDocumentSupport.gpxType, .xml],
+                allowsMultipleSelection: false
+            ) { result in
+                switch result {
+                case .success(let urls):
+                    guard let url = urls.first else { return }
+                    applySelectedFile(url)
+                case .failure(let error):
+                    errorMessage = error.localizedDescription
+                }
+            }
+            .overlay {
+                if isImporting {
+                    ProgressView("Importing route…")
+                        .padding()
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                }
+            }
+            .onAppear {
+                configureImport()
+            }
+        }
+    }
+
+    private func configureImport() {
+        if importService == nil {
+            importService = RouteImportService(routeStore: routeStore)
+        }
+        if settings == nil {
+            settings = try? routeStore.loadSettings()
+            if let settings {
+                selectedActivity = settings.defaultActivityKind
+                buildOfflinePack = settings.buildOfflinePacksByDefault
+            }
+        }
+        if let initialFileURL, selectedFileURL == nil {
+            applySelectedFile(initialFileURL)
+        }
+    }
+
+    private func applySelectedFile(_ url: URL) {
+        selectedFileURL = url
+        if routeName.isEmpty {
+            routeName = url.deletingPathExtension().lastPathComponent
+        }
+    }
+
+    @MainActor
+    private func saveRoute() async {
+        guard let url = selectedFileURL else { return }
+        isImporting = true
+        errorMessage = nil
+        defer { isImporting = false }
+
+        do {
+            let accessed = url.startAccessingSecurityScopedResource()
+            defer {
+                if accessed { url.stopAccessingSecurityScopedResource() }
+            }
+
+            let data = try Data(contentsOf: url)
+            _ = try await importService?.importGPX(
+                data: data,
+                fileName: url.lastPathComponent,
+                customName: routeName,
+                activityHint: selectedActivity,
+                buildOfflinePack: buildOfflinePack
+            )
+            incomingGPX.clearPending()
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+}

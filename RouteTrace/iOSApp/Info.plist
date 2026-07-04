@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeExtensions</key>
+			<array>
+				<string>gpx</string>
+			</array>
+			<key>CFBundleTypeName</key>
+			<string>GPX Route</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.topografix.gpx</string>
+			</array>
+		</dict>
+	</array>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
+	<key>NSHealthShareUsageDescription</key>
+	<string>RouteTrace reads workout and heart-rate data to show activity results after a route.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>RouteTrace saves completed route workouts to the Health app.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>RouteTrace uses your location to preview routes and display imported GPX tracks on the map.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>RouteTrace may use background location to keep route navigation accurate during activities started on Apple Watch.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+		<string>remote-notification</string>
+	</array>
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string></string>
+		<key>UIImageName</key>
+		<string></string>
+	</dict>
+	<key>UTImportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.xml</string>
+				<string>public.data</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>GPS Exchange Format</string>
+			<key>UTTypeIdentifier</key>
+			<string>com.topografix.gpx</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>gpx</string>
+				</array>
+				<key>public.mime-type</key>
+				<array>
+					<string>application/gpx+xml</string>
+					<string>application/xml</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
+</dict>
+</plist>

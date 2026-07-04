@@ -1,0 +1,29 @@
+# Xcode
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+*.xcuserstate
+DerivedData/
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Swift Package Manager
+.build/
+.swiftpm/xcode/xcuserdata/
+Packages/
+Package.resolved
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Secrets / local config
+*.env
+.env.*
+credentials.json
+
+# Cursor / IDE
+.cursor/

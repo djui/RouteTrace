@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSHealthShareUsageDescription</key>
+	<string>RouteTrace reads heart-rate data during route navigation on Apple Watch.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>RouteTrace records workouts for routes you follow on Apple Watch.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>RouteTrace uses your location to navigate GPX routes and show live progress on the map.</string>
+	<key>WKCompanionAppBundleIdentifier</key>
+	<string>com.uwe.RouteTrace</string>
+	<key>WKBackgroundModes</key>
+	<array>
+		<string>workout-processing</string>
+		<string>location</string>
+	</array>
+</dict>
+</plist>
