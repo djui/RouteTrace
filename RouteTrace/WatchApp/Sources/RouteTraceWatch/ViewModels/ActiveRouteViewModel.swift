@@ -195,6 +195,13 @@ final class ActiveRouteViewModel {
         persistActivity()
     }
 
+    func cancelSummary() {
+        guard phase == .summary else { return }
+        phase = .paused
+        persistActivity()
+        publishWidgetState()
+    }
+
     func commitFinish(preferences: WatchPreferences, connectivity: WatchConnectivityManager) async {
         guard phase == .summary else { return }
 

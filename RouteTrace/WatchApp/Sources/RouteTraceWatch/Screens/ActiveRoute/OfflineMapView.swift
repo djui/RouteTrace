@@ -6,6 +6,8 @@ struct OfflineMapView: View {
     @Bindable var viewModel: ActiveRouteViewModel
     var uiState: ActiveRouteUIState?
     var showChrome: Bool = true
+    var allowsHitTesting: Bool = true
+    var recenterToken: Int = 0
 
     @Environment(WatchRouteStore.self) private var routeStore
     @Environment(\.colorScheme) private var colorScheme
@@ -53,19 +55,7 @@ struct OfflineMapView: View {
     private var activeOfflineMap: some View {
         let map = GeometryReader { _ in
             ZStack(alignment: .top) {
-                Canvas { context, size in
-                    var transformed = context
-                    transformed.translateBy(x: panOffset.width, y: panOffset.height)
-                    drawMap(context: &transformed, size: size)
-                }
-                .background(RouteAppearance.offlineMapCanvas(for: colorScheme))
-                .gesture(
-                    DragGesture()
-                        .onChanged { value in
-                            guard isMapFocused else { return }
-                            panOffset = value.translation
-                        }
-                )
+                canvasLayer
 
                 if showChrome, viewModel.navigationSnapshot?.isOffRoute == true {
                     offRouteBanner
@@ -73,11 +63,19 @@ struct OfflineMapView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .ignoresSafeArea()
         .onAppear { loadTiles() }
         .onChange(of: viewModel.navigationSnapshot?.currentCoordinate?.latitude) { _, _ in
-            loadTiles()
+            handleLocationUpdate()
+        }
+        .onChange(of: viewModel.navigationSnapshot?.currentCoordinate?.longitude) { _, _ in
+            handleLocationUpdate()
         }
         .onChange(of: currentSpan) { _, _ in
+            loadTiles()
+        }
+        .onChange(of: recenterToken) { _, _ in
+            panOffset = .zero
             loadTiles()
         }
         .overlay(alignment: .bottom) {
@@ -91,7 +89,7 @@ struct OfflineMapView: View {
 
         if showChrome {
             map
-                .focusable(true)
+                .focusable(isMapFocused)
                 .digitalCrownRotation(
                     spanBinding,
                     from: 0.002,
@@ -99,10 +97,35 @@ struct OfflineMapView: View {
                     by: 0.001,
                     sensitivity: .medium,
                     isContinuous: false,
-                    isHapticFeedbackEnabled: true
+                    isHapticFeedbackEnabled: isMapFocused
                 )
         } else {
             map
+        }
+    }
+
+    @ViewBuilder
+    private var canvasLayer: some View {
+        let canvas = Canvas { context, size in
+            var transformed = context
+            transformed.translateBy(x: panOffset.width, y: panOffset.height)
+            drawMap(context: &transformed, size: size)
+        }
+        .background(RouteAppearance.offlineMapCanvas(for: colorScheme))
+        .allowsHitTesting(allowsHitTesting)
+
+        if isMapFocused {
+            canvas.gesture(
+                DragGesture()
+                    .onChanged { value in
+                        panOffset = value.translation
+                    }
+                    .onEnded { value in
+                        snapPanAfterDrag(value.translation)
+                    }
+            )
+        } else {
+            canvas
         }
     }
 
@@ -114,6 +137,45 @@ struct OfflineMapView: View {
             .foregroundStyle(.white)
             .clipShape(Capsule())
             .padding(.top, 4)
+    }
+
+    private func handleLocationUpdate() {
+        if !isMapFocused {
+            panOffset = .zero
+            loadTiles()
+        } else if panOffset == .zero {
+            loadTiles()
+        }
+    }
+
+    private func snapPanAfterDrag(_ translation: CGSize) {
+        let threshold: CGFloat = 128
+        var dx = 0
+        var dy = 0
+
+        if translation.width > threshold {
+            dx = 1
+        } else if translation.width < -threshold {
+            dx = -1
+        }
+
+        if translation.height > threshold {
+            dy = 1
+        } else if translation.height < -threshold {
+            dy = -1
+        }
+
+        if dx != 0 || dy != 0 {
+            activeTile = TileCoordinate(
+                zoom: activeTile.zoom,
+                x: activeTile.x + dx,
+                y: activeTile.y + dy
+            )
+            panOffset = .zero
+            loadTiles()
+        } else {
+            panOffset = translation
+        }
     }
 
     private func loadTiles() {
@@ -136,13 +198,25 @@ struct OfflineMapView: View {
             if let result {
                 renderZoom = result.zoom
                 activeTile = result.tile
-                if let image = loadCGImage(from: tileStore.tileURL(for: result.tile)) {
-                    tileImages = [result.tile.filename: image]
-                    loadError = result.usedFallback ? "Partial offline map" : nil
-                } else {
-                    tileImages = [:]
-                    loadError = "Partial offline map"
+                var images: [String: CGImage] = [:]
+                var usedFallback = result.usedFallback
+
+                for tile in tileStore.neighboringTiles(around: result.tile, radius: 1) {
+                    guard tileStore.tileExists(tile),
+                          let image = loadCGImage(from: tileStore.tileURL(for: tile)) else {
+                        continue
+                    }
+                    images[tile.filename] = image
                 }
+
+                if images.isEmpty, let image = loadCGImage(from: tileStore.tileURL(for: result.tile)) {
+                    images[result.tile.filename] = image
+                } else if images.isEmpty {
+                    usedFallback = true
+                }
+
+                tileImages = images
+                loadError = usedFallback ? "Partial offline map" : nil
             } else {
                 renderZoom = 0
                 activeTile = TileCoordinate(zoom: 0, x: 0, y: 0)
@@ -186,10 +260,21 @@ struct OfflineMapView: View {
 
         if renderZoom == 0 {
             drawL0Fallback(context: &context, size: size, route: route)
-        } else if let coordinate = viewModel.navigationSnapshot?.currentCoordinate ?? Optional(route.boundingBox.center) {
-            drawTiles(context: &context, size: size, center: coordinate, route: route)
+            return
         }
 
+        guard let coordinate = viewModel.navigationSnapshot?.currentCoordinate ?? Optional(route.boundingBox.center) else {
+            return
+        }
+
+        if tileScale != 1 {
+            let anchor = CGPoint(x: size.width / 2, y: size.height / 2)
+            context.translateBy(x: anchor.x, y: anchor.y)
+            context.scaleBy(x: tileScale, y: tileScale)
+            context.translateBy(x: -anchor.x, y: -anchor.y)
+        }
+
+        drawTiles(context: &context, size: size, center: coordinate)
         drawRouteOverlay(context: &context, size: size, route: route)
     }
 
@@ -202,10 +287,10 @@ struct OfflineMapView: View {
 
         let box = route.boundingBox
         let routeRect = CGRect(
-            x: size.width * 0.15,
-            y: size.height * 0.2,
-            width: size.width * 0.7,
-            height: size.height * 0.6
+            x: size.width * 0.05,
+            y: size.height * 0.05,
+            width: size.width * 0.9,
+            height: size.height * 0.9
         )
         let progress = viewModel.navigationSnapshot?.progressDistanceMeters ?? 0
         let split = ActiveRouteMapOverlay.splitRouteCoordinates(route, atProgressMeters: progress)
@@ -245,18 +330,35 @@ struct OfflineMapView: View {
     private func drawTiles(
         context: inout GraphicsContext,
         size: CGSize,
-        center: GeoCoordinate,
-        route: RoutePackage
+        center: GeoCoordinate
     ) {
-        guard let image = tileImages[activeTile.filename] else { return }
-        var tileContext = context
-        let rect = CGRect(origin: .zero, size: size)
-        if tileScale != 1 {
-            tileContext.translateBy(x: size.width / 2, y: size.height / 2)
-            tileContext.scaleBy(x: tileScale, y: tileScale)
-            tileContext.translateBy(x: -size.width / 2, y: -size.height / 2)
+        guard !tileImages.isEmpty else { return }
+
+        let userPixel = MapMath.coordinateToPixel(
+            coordinate: center,
+            tileX: activeTile.x,
+            tileY: activeTile.y,
+            zoom: renderZoom
+        )
+        let userPoint = CGPoint(x: size.width * userPixel.x / 256, y: size.height * userPixel.y / 256)
+        let centerOffset = CGPoint(x: size.width / 2 - userPoint.x, y: size.height / 2 - userPoint.y)
+
+        guard let routeID = viewModel.routePackage?.id,
+              let tileStore = routeStore.tileStore(for: routeID) else {
+            return
         }
-        tileContext.draw(Image(decorative: image, scale: 1), in: rect)
+
+        for tile in tileStore.neighboringTiles(around: activeTile, radius: 1) {
+            guard let image = tileImages[tile.filename] else { continue }
+
+            let dx = tile.x - activeTile.x
+            let dy = tile.y - activeTile.y
+            let origin = CGPoint(
+                x: centerOffset.x + CGFloat(dx) * size.width,
+                y: centerOffset.y + CGFloat(dy) * size.height
+            )
+            context.draw(Image(decorative: image, scale: 1), in: CGRect(origin: origin, size: size))
+        }
     }
 
     private func drawRouteOverlay(context: inout GraphicsContext, size: CGSize, route: RoutePackage) {
@@ -280,24 +382,101 @@ struct OfflineMapView: View {
                 tileY: tile.y,
                 zoom: renderZoom
             )
-            let pt = CGPoint(x: size.width * pixel.x / 256, y: size.height * pixel.y / 256)
-            context.fill(
-                Path(ellipseIn: CGRect(x: pt.x - 10, y: pt.y - 10, width: 20, height: 20)),
-                with: .color(.black.opacity(0.75))
+            let userPixel = viewModel.navigationSnapshot?.currentCoordinate.map {
+                MapMath.coordinateToPixel(
+                    coordinate: $0,
+                    tileX: tile.x,
+                    tileY: tile.y,
+                    zoom: renderZoom
+                )
+            }
+            let userPoint = userPixel.map {
+                CGPoint(x: size.width * $0.x / 256, y: size.height * $0.y / 256)
+            } ?? CGPoint(x: size.width / 2, y: size.height / 2)
+            let centerOffset = CGPoint(x: size.width / 2 - userPoint.x, y: size.height / 2 - userPoint.y)
+            let pt = CGPoint(
+                x: centerOffset.x + size.width * pixel.x / 256,
+                y: centerOffset.y + size.height * pixel.y / 256
             )
+            drawTurnMarker(&context, at: pt, bearing: cue.bearingAfter, kind: cue.kind)
         }
 
-        if let current = viewModel.navigationSnapshot?.currentCoordinate {
-            let pixel = MapMath.coordinateToPixel(
-                coordinate: current,
-                tileX: tile.x,
-                tileY: tile.y,
-                zoom: renderZoom
+        if viewModel.navigationSnapshot?.currentCoordinate != nil {
+            let heading = ActiveRouteMapOverlay.resolvedHeadingDegrees(
+                courseDegrees: viewModel.locationService.lastSample?.courseDegrees,
+                fallbackBearing: viewModel.navigationSnapshot?.nextCue?.bearingAfter
             )
-            let pt = CGPoint(x: size.width * pixel.x / 256, y: size.height * pixel.y / 256)
-            context.fill(Path(ellipseIn: CGRect(x: pt.x - 5, y: pt.y - 5, width: 10, height: 10)), with: .color(.blue))
-            context.stroke(Path(ellipseIn: CGRect(x: pt.x - 5, y: pt.y - 5, width: 10, height: 10)), with: .color(.white), lineWidth: 1.5)
+            drawUserHeadingMarker(&context, at: CGPoint(x: size.width / 2, y: size.height / 2), headingDegrees: heading)
         }
+    }
+
+    private func drawUserHeadingMarker(
+        _ context: inout GraphicsContext,
+        at point: CGPoint,
+        headingDegrees: Double
+    ) {
+        let size: CGFloat = 18
+        let dotSize = size * 0.55
+        let ringSize = size
+        let wedgeLength = size * 0.38
+
+        var wedgeContext = context
+        wedgeContext.translateBy(x: point.x, y: point.y)
+        wedgeContext.rotate(by: .degrees(headingDegrees))
+
+        var wedge = Path()
+        wedge.move(to: CGPoint(x: 0, y: -ringSize / 2 - wedgeLength))
+        wedge.addLine(to: CGPoint(x: -wedgeLength * 0.55, y: -ringSize / 2))
+        wedge.addLine(to: CGPoint(x: wedgeLength * 0.55, y: -ringSize / 2))
+        wedge.closeSubpath()
+        wedgeContext.fill(wedge, with: .color(.white))
+
+        let ringRect = CGRect(
+            x: point.x - ringSize / 2,
+            y: point.y - ringSize / 2,
+            width: ringSize,
+            height: ringSize
+        )
+        context.stroke(Path(ellipseIn: ringRect), with: .color(.white), lineWidth: 2.5)
+
+        let dotRect = CGRect(
+            x: point.x - dotSize / 2,
+            y: point.y - dotSize / 2,
+            width: dotSize,
+            height: dotSize
+        )
+        context.fill(Path(ellipseIn: dotRect), with: .color(.blue))
+    }
+
+    private func drawTurnMarker(
+        _ context: inout GraphicsContext,
+        at point: CGPoint,
+        bearing: Double,
+        kind: RouteCueKind
+    ) {
+        let markerSize: CGFloat = 32
+        let rect = CGRect(
+            x: point.x - markerSize / 2,
+            y: point.y - markerSize / 2,
+            width: markerSize,
+            height: markerSize
+        )
+        context.fill(Path(ellipseIn: rect), with: .color(.black.opacity(0.82)))
+        context.stroke(Path(ellipseIn: rect), with: .color(.white), lineWidth: 2)
+
+        let rotation = ActiveRouteMapOverlay.shouldRotateCueSymbol(kind) ? bearing : 0
+        let symbolName = ActiveRouteMapOverlay.cueSymbol(for: kind)
+
+        var symbolContext = context
+        symbolContext.translateBy(x: point.x, y: point.y)
+        symbolContext.rotate(by: .degrees(rotation))
+
+        let resolved = symbolContext.resolve(
+            Text(Image(systemName: symbolName))
+                .font(.system(size: markerSize * 0.45, weight: .black))
+                .foregroundStyle(.white)
+        )
+        symbolContext.draw(resolved, at: .zero, anchor: .center)
     }
 
     private func strokeProjectedPath(
@@ -308,6 +487,20 @@ struct OfflineMapView: View {
         color: Color
     ) {
         guard coordinates.count >= 2 else { return }
+
+        let userPixel = viewModel.navigationSnapshot?.currentCoordinate.map {
+            MapMath.coordinateToPixel(
+                coordinate: $0,
+                tileX: tile.x,
+                tileY: tile.y,
+                zoom: renderZoom
+            )
+        }
+        let userPoint = userPixel.map {
+            CGPoint(x: size.width * $0.x / 256, y: size.height * $0.y / 256)
+        } ?? CGPoint(x: size.width / 2, y: size.height / 2)
+        let centerOffset = CGPoint(x: size.width / 2 - userPoint.x, y: size.height / 2 - userPoint.y)
+
         var path = Path()
         for (index, coordinate) in coordinates.enumerated() {
             let geo = GeoCoordinate(latitude: coordinate.latitude, longitude: coordinate.longitude)
@@ -317,7 +510,10 @@ struct OfflineMapView: View {
                 tileY: tile.y,
                 zoom: renderZoom
             )
-            let pt = CGPoint(x: size.width * pixel.x / 256, y: size.height * pixel.y / 256)
+            let pt = CGPoint(
+                x: centerOffset.x + size.width * pixel.x / 256,
+                y: centerOffset.y + size.height * pixel.y / 256
+            )
             if index == 0 { path.move(to: pt) } else { path.addLine(to: pt) }
         }
         context.stroke(

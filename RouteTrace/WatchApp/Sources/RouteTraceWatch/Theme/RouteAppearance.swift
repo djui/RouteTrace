@@ -65,6 +65,15 @@ extension View {
             RouteScreenBackground()
         }
     }
+
+    @ViewBuilder
+    func conditionalRouteScreenBackground(isOpaque: Bool) -> some View {
+        if isOpaque {
+            routeScreenBackground()
+        } else {
+            self
+        }
+    }
 }
 
 private struct RouteScreenBackground: View {

@@ -90,6 +90,38 @@ enum ActiveRouteMapOverlay {
         }
     }
 
+    static func shouldRotateCueSymbol(_ kind: RouteCueKind) -> Bool {
+        switch kind {
+        case .continue, .start, .finish:
+            true
+        default:
+            false
+        }
+    }
+
+    static func cueMarkerRotation(kind: RouteCueKind, bearing: Double) -> Double {
+        if shouldRotateCueSymbol(kind) {
+            return bearing
+        }
+        switch kind {
+        case .slightLeft: return 315
+        case .slightRight: return 45
+        case .turnLeft: return 270
+        case .turnRight: return 90
+        case .sharpLeft: return 225
+        case .sharpRight: return 135
+        case .uTurn: return 180
+        default: return bearing
+        }
+    }
+
+    static func resolvedHeadingDegrees(courseDegrees: Double?, fallbackBearing: Double?) -> Double {
+        if let course = courseDegrees, course >= 0 {
+            return course
+        }
+        return fallbackBearing ?? 0
+    }
+
     static func directionAnnotations(for route: RoutePackage, everyMeters: Double = 400) -> [DirectionAnnotation] {
         var results: [DirectionAnnotation] = []
         guard route.route.count >= 2 else { return results }
@@ -130,47 +162,90 @@ struct DirectionAnnotation: Identifiable {
 }
 
 struct UserHeadingMarker: View {
-    let courseDegrees: Double?
-    var size: CGFloat = 12
+    let headingDegrees: Double
+    var size: CGFloat = 18
+
+    private var dotSize: CGFloat { size * 0.55 }
+    private var ringSize: CGFloat { size }
+    private var wedgeLength: CGFloat { size * 0.38 }
+    private var totalSize: CGFloat { ringSize + wedgeLength * 2 }
 
     var body: some View {
         ZStack {
+            HeadingWedgeShape()
+                .fill(.white)
+                .frame(width: wedgeLength * 1.1, height: wedgeLength)
+                .offset(y: -(ringSize / 2 + wedgeLength / 2))
+                .rotationEffect(.degrees(headingDegrees))
+
+            Circle()
+                .stroke(.white, lineWidth: 2.5)
+                .frame(width: ringSize, height: ringSize)
+
             Circle()
                 .fill(.blue)
-                .frame(width: size, height: size)
-            Circle()
-                .stroke(.white, lineWidth: 2)
-                .frame(width: size, height: size)
-
-            if let course = courseDegrees, course >= 0 {
-                Image(systemName: "location.north.fill")
-                    .font(.system(size: size * 0.55, weight: .bold))
-                    .foregroundStyle(.white)
-                    .rotationEffect(.degrees(course))
-                    .offset(y: -size * 0.35)
-            }
+                .frame(width: dotSize, height: dotSize)
         }
+        .frame(width: totalSize, height: totalSize)
+    }
+}
+
+private struct HeadingWedgeShape: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.midX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        path.closeSubpath()
+        return path
+    }
+}
+
+struct CueSymbolMarker: View {
+    let kind: RouteCueKind
+    var bearing: Double = 0
+    var symbolSize: CGFloat = 32
+    var markerSize: CGFloat = 36
+    var showsBackground: Bool = true
+    var foregroundColor: Color = .white
+
+    private var rotation: Double {
+        ActiveRouteMapOverlay.shouldRotateCueSymbol(kind) ? bearing : 0
+    }
+
+    var body: some View {
+        Image(systemName: ActiveRouteMapOverlay.cueSymbol(for: kind))
+            .font(.system(size: symbolSize, weight: .black))
+            .foregroundStyle(foregroundColor)
+            .padding(showsBackground ? markerSize * 0.2 : 0)
+            .background {
+                if showsBackground {
+                    Circle()
+                        .fill(.black.opacity(0.75))
+                }
+            }
+            .overlay {
+                if showsBackground {
+                    Circle()
+                        .stroke(.white, lineWidth: 2)
+                }
+            }
+            .rotationEffect(.degrees(rotation))
     }
 }
 
 struct TurnArrowMarker: View {
+    let kind: RouteCueKind
     let bearing: Double
-    var size: CGFloat = 28
+    var size: CGFloat = 36
 
     var body: some View {
-        Image(systemName: "arrow.up")
-            .font(.system(size: size * 0.6, weight: .black))
-            .foregroundStyle(.white)
-            .padding(size * 0.2)
-            .background {
-                Circle()
-                    .fill(.black.opacity(0.75))
-            }
-            .overlay {
-                Circle()
-                    .stroke(.white, lineWidth: 2)
-            }
-            .rotationEffect(.degrees(bearing))
+        CueSymbolMarker(
+            kind: kind,
+            bearing: bearing,
+            symbolSize: size * 0.55,
+            markerSize: size
+        )
     }
 }
 
@@ -180,28 +255,34 @@ struct NavigationGuidanceBar: View {
     let isOffRoute: Bool
 
     var body: some View {
-        HStack(spacing: 6) {
-            Image(systemName: ActiveRouteMapOverlay.cueSymbol(for: cue.kind))
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(isOffRoute ? .orange : .primary)
-                .frame(width: 20)
+        HStack(alignment: .center, spacing: 10) {
+            CueSymbolMarker(
+                kind: cue.kind,
+                symbolSize: 32,
+                markerSize: 36,
+                showsBackground: false,
+                foregroundColor: isOffRoute ? .orange : .primary
+            )
+            .frame(width: 36)
 
-            if let distanceMeters {
-                Text(RouteFormatting.distance(distanceMeters))
-                    .font(.subheadline.weight(.bold))
-                    .lineLimit(1)
+            VStack(alignment: .leading, spacing: 3) {
+                if let distanceMeters {
+                    Text(RouteFormatting.distance(distanceMeters))
+                        .font(.headline.weight(.bold))
+                        .lineLimit(1)
+                }
+
+                Text(cue.instruction)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.8)
             }
-
-            Text(cue.instruction)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
 
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 6)
+        .padding(.vertical, 8)
         .frame(maxWidth: .infinity)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
     }

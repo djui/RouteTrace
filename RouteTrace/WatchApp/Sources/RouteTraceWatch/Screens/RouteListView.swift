@@ -7,11 +7,37 @@ struct RouteListView: View {
     @Environment(WatchPreferences.self) private var preferences
     @State private var activeViewModel = ActiveRouteViewModel()
     @State private var showingSettings = false
-    @State private var showActiveRoute = false
     @State private var didAttemptRestore = false
     @State private var routePendingDelete: RoutePackage?
 
     var body: some View {
+        Group {
+            if activeViewModel.isActive {
+                ActiveRouteContainerView(viewModel: activeViewModel)
+            } else {
+                routesNavigationStack
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: RouteTraceIntentNotifications.pauseResumeActivity)) { _ in
+            activeViewModel.togglePauseResume(preferences: preferences)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: RouteTraceIntentNotifications.startLastRoute)) { _ in
+            Task {
+                await startLastRouteIfNeeded()
+            }
+        }
+        .onOpenURL { url in
+            handleDeepLink(url)
+        }
+        .task {
+            guard !didAttemptRestore else { return }
+            didAttemptRestore = true
+            await routeStore.reload()
+            _ = await activeViewModel.restoreIfNeeded(from: routeStore, preferences: preferences)
+        }
+    }
+
+    private var routesNavigationStack: some View {
         NavigationStack {
             Group {
                 if routeStore.isLoading && routeStore.routes.isEmpty {
@@ -24,27 +50,16 @@ struct RouteListView: View {
                     )
                 } else {
                     List {
-                        if activeViewModel.isActive && !activeViewModel.isShowingSummary {
-                            Section {
-                                activeActivityBanner
-                            }
-                        }
-
                         Section {
                             ForEach(routeStore.routes) { route in
-                                if activeViewModel.isActive {
+                                NavigationLink(value: route.id) {
                                     RouteRowView(route: route)
-                                        .foregroundStyle(.secondary)
-                                } else {
-                                    NavigationLink(value: route.id) {
-                                        RouteRowView(route: route)
-                                    }
-                                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                        Button(role: .destructive) {
-                                            routePendingDelete = route
-                                        } label: {
-                                            Label("Delete", systemImage: "trash")
-                                        }
+                                }
+                                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                    Button(role: .destructive) {
+                                        routePendingDelete = route
+                                    } label: {
+                                        Label("Delete", systemImage: "trash")
                                     }
                                 }
                             }
@@ -61,16 +76,12 @@ struct RouteListView: View {
                     } label: {
                         Image(systemName: "gearshape")
                     }
-                    .disabled(activeViewModel.isActive && !activeViewModel.isShowingSummary)
                 }
             }
             .navigationDestination(for: UUID.self) { routeID in
                 if let route = routeStore.route(with: routeID) {
                     RouteDetailView(route: route, activeViewModel: activeViewModel)
                 }
-            }
-            .fullScreenCover(isPresented: $showActiveRoute) {
-                ActiveRouteContainerView(viewModel: activeViewModel)
             }
             .confirmationDialog(
                 "Delete this route?",
@@ -92,62 +103,13 @@ struct RouteListView: View {
                     routePendingDelete = nil
                 }
             }
-            .onChange(of: activeViewModel.isActive) { _, isActive in
-                showActiveRoute = isActive
-            }
-            .onChange(of: activeViewModel.isShowingSummary) { _, showing in
-                showActiveRoute = showing || activeViewModel.isActive
-            }
-            .onReceive(NotificationCenter.default.publisher(for: RouteTraceIntentNotifications.pauseResumeActivity)) { _ in
-                activeViewModel.togglePauseResume(preferences: preferences)
-            }
-            .onReceive(NotificationCenter.default.publisher(for: RouteTraceIntentNotifications.startLastRoute)) { _ in
-                Task {
-                    await startLastRouteIfNeeded()
-                }
-            }
-            .onOpenURL { url in
-                handleDeepLink(url)
-            }
             .navigationDestination(isPresented: $showingSettings) {
                 SettingsView()
             }
             .refreshable {
                 await routeStore.reload()
             }
-            .task {
-                guard !didAttemptRestore else { return }
-                didAttemptRestore = true
-                await routeStore.reload()
-                if await activeViewModel.restoreIfNeeded(from: routeStore, preferences: preferences) {
-                    showActiveRoute = true
-                }
-            }
         }
-    }
-
-    private var activeActivityBanner: some View {
-        Button {
-            showActiveRoute = true
-        } label: {
-            HStack {
-                Image(systemName: "figure.run.circle.fill")
-                    .foregroundStyle(.green)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Activity in progress")
-                        .font(.headline)
-                    Text(activeViewModel.routePackage?.name ?? "Route")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.caption)
-            }
-            .padding(.vertical, 8)
-        }
-        .buttonStyle(.plain)
-        .listRowBackground(Color.green.opacity(0.15))
     }
 
     private func startLastRouteIfNeeded() async {
@@ -157,14 +119,10 @@ struct RouteListView: View {
             activityKind: route.activityHint,
             preferences: preferences
         )
-        showActiveRoute = true
     }
 
     private func handleDeepLink(_ url: URL) {
         guard url.scheme == "routetrace", url.host == "active" else { return }
-        if activeViewModel.isActive {
-            showActiveRoute = true
-        }
     }
 }
 

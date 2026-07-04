@@ -8,6 +8,10 @@ struct ActiveRouteContainerView: View {
 
     @State private var uiState = ActiveRouteUIState()
 
+    private var usesTransparentBackground: Bool {
+        !viewModel.isShowingSummary && uiState.selectedPage == .liveMap && !uiState.isMapFocus
+    }
+
     var body: some View {
         Group {
             if viewModel.isShowingSummary {
@@ -21,7 +25,7 @@ struct ActiveRouteContainerView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .routeScreenBackground()
+        .conditionalRouteScreenBackground(isOpaque: !usesTransparentBackground)
     }
 
     private var carousel: some View {

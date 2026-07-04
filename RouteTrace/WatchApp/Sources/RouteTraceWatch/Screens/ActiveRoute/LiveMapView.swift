@@ -10,15 +10,10 @@ struct LiveMapView: View {
     @Environment(WatchRouteStore.self) private var routeStore
 
     @State private var cameraPosition: MapCameraPosition = .automatic
-    @State private var userPannedAway = false
-    @State private var lastFollowAt = Date()
+    @State private var offlineRecenterToken = 0
 
     private var isFocused: Bool {
         uiState.isMapFocus && uiState.selectedPage == .liveMap
-    }
-
-    private var crownEnabled: Bool {
-        uiState.selectedPage == .liveMap || isFocused
     }
 
     private var usesOfflineTiles: Bool {
@@ -28,134 +23,69 @@ struct LiveMapView: View {
     }
 
     var body: some View {
+        Group {
+            if isFocused {
+                mapContent
+                    .focusable(true)
+                    .digitalCrownRotation(
+                        $uiState.mapSpan,
+                        from: 0.002,
+                        through: 0.04,
+                        by: 0.001,
+                        sensitivity: .medium,
+                        isContinuous: false,
+                        isHapticFeedbackEnabled: true
+                    )
+            } else {
+                mapContent
+            }
+        }
+        .onChange(of: viewModel.navigationSnapshot?.currentCoordinate?.latitude) { _, _ in
+            followLocationIfNeeded()
+        }
+        .onChange(of: viewModel.navigationSnapshot?.currentCoordinate?.longitude) { _, _ in
+            followLocationIfNeeded()
+        }
+        .onChange(of: uiState.mapSpan) { _, _ in
+            if !isFocused {
+                recenterIfNeeded()
+            }
+        }
+        .onAppear {
+            if !isFocused {
+                recenterIfNeeded()
+            }
+        }
+    }
+
+    private var mapContent: some View {
         AlwaysOnAware {
             ZStack {
                 if usesOfflineTiles {
-                    OfflineMapView(viewModel: viewModel, uiState: uiState, showChrome: false)
+                    OfflineMapView(
+                        viewModel: viewModel,
+                        uiState: uiState,
+                        showChrome: false,
+                        allowsHitTesting: isFocused,
+                        recenterToken: offlineRecenterToken
+                    )
                 } else {
                     mapLayer
                 }
 
-                if isFocused {
-                    focusOverlayChrome
-                } else {
-                    overlayChrome
+                if !isFocused {
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            enterMapFocusIfNeeded()
+                        }
+                        .allowsHitTesting(true)
                 }
             }
         } dimmed: {
             ActiveRouteDimmedSummary(viewModel: viewModel)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .focusable(crownEnabled)
-        .digitalCrownRotation(
-            $uiState.mapSpan,
-            from: 0.002,
-            through: 0.04,
-            by: 0.001,
-            sensitivity: .medium,
-            isContinuous: false,
-            isHapticFeedbackEnabled: true
-        )
-        .onChange(of: viewModel.navigationSnapshot?.currentCoordinate?.latitude) { _, _ in
-            if !isFocused { recenterIfNeeded() }
-        }
-        .onChange(of: uiState.mapSpan) { _, _ in
-            if isFocused {
-                userPannedAway = true
-            } else {
-                recenterIfNeeded()
-            }
-        }
-        .onAppear { recenterIfNeeded() }
-    }
-
-    @ViewBuilder
-    private var overlayChrome: some View {
-        VStack {
-            HStack(alignment: .top) {
-                RouteDistanceBubble(
-                    covered: RouteFormatting.distance(viewModel.navigationSnapshot?.progressDistanceMeters ?? 0),
-                    remaining: RouteFormatting.distance(viewModel.navigationSnapshot?.distanceRemainingMeters ?? 0)
-                )
-                .allowsHitTesting(true)
-
-                Spacer()
-
-                HStack(spacing: 6) {
-                    Button {
-                        enterMapFocusIfNeeded()
-                    } label: {
-                        Image(systemName: "arrow.up.left.and.arrow.down.right")
-                            .font(.caption2)
-                            .foregroundStyle(RouteAppearance.overlayText.opacity(0.85))
-                            .padding(6)
-                            .background(RouteAppearance.overlayFill, in: Circle())
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {
-                        userPannedAway = false
-                        lastFollowAt = Date()
-                        recenterIfNeeded()
-                    } label: {
-                        Image(systemName: "scope")
-                            .font(.caption)
-                            .foregroundStyle(RouteAppearance.overlayText.opacity(0.85))
-                            .padding(6)
-                            .background(RouteAppearance.overlayFill, in: Circle())
-                    }
-                    .buttonStyle(.plain)
-                }
-                .allowsHitTesting(true)
-            }
-            .padding(.horizontal, 4)
-            .padding(.top, 2)
-
-            Spacer()
-                .allowsHitTesting(false)
-
-            if let snapshot = viewModel.navigationSnapshot,
-               let cue = snapshot.nextCue,
-               let distance = snapshot.distanceToNextCueMeters,
-               distance <= 500 {
-                NavigationGuidanceBar(
-                    cue: cue,
-                    distanceMeters: distance,
-                    isOffRoute: snapshot.isOffRoute
-                )
-                .padding(.horizontal, 4)
-                .allowsHitTesting(false)
-            }
-
-            Spacer()
-                .frame(height: 12)
-                .allowsHitTesting(false)
-        }
-        .allowsHitTesting(false)
-    }
-
-    private var focusOverlayChrome: some View {
-        VStack {
-            HStack {
-                Spacer()
-                Button {
-                    userPannedAway = false
-                    lastFollowAt = Date()
-                    recenterIfNeeded()
-                } label: {
-                    Image(systemName: "scope")
-                        .font(.caption)
-                        .foregroundStyle(RouteAppearance.overlayText.opacity(0.85))
-                        .padding(6)
-                        .background(RouteAppearance.overlayFill, in: Circle())
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(.horizontal, 4)
-            .padding(.top, 2)
-
-            Spacer()
-        }
     }
 
     private var mapLayer: some View {
@@ -176,25 +106,28 @@ struct LiveMapView: View {
                    let distance = snapshot.distanceToNextCueMeters,
                    distance <= 500 {
                     Annotation("", coordinate: ActiveRouteMapOverlay.clLocation(cue.coordinate)) {
-                        TurnArrowMarker(bearing: cue.bearingAfter)
+                        TurnArrowMarker(kind: cue.kind, bearing: cue.bearingAfter)
                     }
                 }
 
                 if let coordinate = viewModel.navigationSnapshot?.currentCoordinate {
                     Annotation("", coordinate: ActiveRouteMapOverlay.clLocation(coordinate)) {
-                        UserHeadingMarker(
-                            courseDegrees: viewModel.locationService.lastSample?.courseDegrees
-                        )
+                        UserHeadingMarker(headingDegrees: headingDegrees)
                     }
                 }
             }
         }
         .mapStyle(.standard(elevation: .flat, emphasis: .muted))
-        .onMapCameraChange(frequency: .continuous) { _ in
-            guard isFocused else { return }
-            userPannedAway = true
-        }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .ignoresSafeArea()
+        .allowsHitTesting(isFocused)
+    }
+
+    private var headingDegrees: Double {
+        ActiveRouteMapOverlay.resolvedHeadingDegrees(
+            courseDegrees: viewModel.locationService.lastSample?.courseDegrees,
+            fallbackBearing: viewModel.navigationSnapshot?.nextCue?.bearingAfter
+        )
     }
 
     private func enterMapFocusIfNeeded() {
@@ -203,13 +136,15 @@ struct LiveMapView: View {
         uiState.enterMapFocus()
     }
 
-    func recenterIfNeeded() {
-        guard let coordinate = viewModel.navigationSnapshot?.currentCoordinate else { return }
+    private func followLocationIfNeeded() {
+        guard !isFocused else { return }
+        offlineRecenterToken += 1
+        recenterIfNeeded()
+    }
 
-        if preferences.mapFollowMode {
-            if userPannedAway, Date().timeIntervalSince(lastFollowAt) < 5 { return }
-            userPannedAway = false
-        }
+    func recenterIfNeeded() {
+        guard !isFocused else { return }
+        guard let coordinate = viewModel.navigationSnapshot?.currentCoordinate else { return }
 
         let center = ActiveRouteMapOverlay.clLocation(coordinate)
         if preferences.mapOrientation == .headingUp,

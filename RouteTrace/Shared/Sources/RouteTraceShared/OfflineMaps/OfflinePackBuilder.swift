@@ -224,6 +224,17 @@ public struct OfflineTileStore: Sendable {
         FileManager.default.fileExists(atPath: tileURL(for: tile).path)
     }
 
+    public func neighboringTiles(around tile: TileCoordinate, radius: Int = 1) -> [TileCoordinate] {
+        guard tile.zoom > 0 else { return [tile] }
+        var result: [TileCoordinate] = []
+        for dx in -radius ... radius {
+            for dy in -radius ... radius {
+                result.append(TileCoordinate(zoom: tile.zoom, x: tile.x + dx, y: tile.y + dy))
+            }
+        }
+        return result
+    }
+
     public struct ResolvedTile: Sendable {
         public let tile: TileCoordinate
         public let zoom: Int

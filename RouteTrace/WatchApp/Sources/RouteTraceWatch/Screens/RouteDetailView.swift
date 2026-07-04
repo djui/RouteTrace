@@ -61,6 +61,7 @@ struct RouteDetailView: View {
                 }
             }
         }
+        .listSectionSpacing(8)
         .safeAreaInset(edge: .bottom, spacing: 0) {
             startRouteBottomBar
         }
@@ -102,44 +103,27 @@ struct RouteDetailView: View {
     private var startRouteBottomBar: some View {
         startRouteControl
             .padding(.horizontal, 4)
-            .padding(.top, 4)
             .frame(maxWidth: .infinity)
             .background {
-                LinearGradient(
-                    colors: [
-                        RouteAppearance.canvas(for: colorScheme).opacity(0),
-                        RouteAppearance.canvas(for: colorScheme),
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .ignoresSafeArea(edges: .bottom)
+                RouteAppearance.canvas(for: colorScheme)
+                    .ignoresSafeArea(edges: .bottom)
             }
             .ignoresSafeArea(edges: .bottom)
     }
 
     @ViewBuilder
     private var startRouteControl: some View {
-        if activeViewModel.isActive {
-            Label("Finish current activity first", systemImage: "exclamationmark.triangle")
-                .font(.caption)
-                .foregroundStyle(.orange)
+        Button {
+            startRoute()
+        } label: {
+            Label(isStarting ? "Starting…" : "Start", systemImage: "play.fill")
+                .font(.headline)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 10)
-                .background(.orange.opacity(0.15), in: RoundedRectangle(cornerRadius: 12))
-        } else {
-            Button {
-                startRoute()
-            } label: {
-                Label(isStarting ? "Starting…" : "Start", systemImage: "play.fill")
-                    .font(.headline)
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(.green)
-            .controlSize(.large)
-            .disabled(isStarting)
         }
+        .buttonStyle(.borderedProminent)
+        .tint(.green)
+        .controlSize(.large)
+        .disabled(isStarting)
     }
 
     private func startRoute() {

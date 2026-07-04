@@ -58,7 +58,7 @@ struct ActiveRoutePageDots: View {
             }
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 5)
+        .padding(.vertical, 2)
         .allowsHitTesting(false)
     }
 }
@@ -70,15 +70,15 @@ struct ActiveRouteStatusBar: View {
 
     var body: some View {
         HStack(spacing: 4) {
-            if showActivityIcon {
-                Image(systemName: activityKind.systemImage)
-                    .foregroundStyle(.green)
-                    .font(.caption2)
-            }
             if isPaused {
                 Image(systemName: "pause.fill")
                     .font(.caption2)
                     .foregroundStyle(.orange)
+            } else if showActivityIcon {
+                Image(systemName: activityKind.systemImage)
+                    .foregroundStyle(.green)
+                    .font(.caption2)
+                    .symbolEffect(.pulse, options: .repeating)
             }
         }
     }
@@ -92,31 +92,41 @@ struct ActiveRouteChrome<Content: View>: View {
 
     @ViewBuilder let content: () -> Content
 
+    private var usesTransparentBackground: Bool {
+        uiState.selectedPage == .liveMap && !uiState.isMapFocus
+    }
+
+    private var showsLiveMapBrowseChrome: Bool {
+        uiState.selectedPage == .liveMap && !uiState.isMapFocus
+    }
+
     var body: some View {
+        chromeContent
+            .conditionalRouteScreenBackground(isOpaque: !usesTransparentBackground)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .toolbar(.hidden, for: .navigationBar)
+            .toolbarBackground(.hidden, for: .navigationBar)
+    }
+
+    private var chromeContent: some View {
         ZStack {
             content()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                topBar
-                Spacer(minLength: 0)
-                if !uiState.isMapFocus {
-                    ActiveRoutePageDots(selectedPage: uiState.selectedPage)
-                        .padding(.bottom, 4)
-                }
+            if uiState.isMapFocus {
+                focusOverlay
+            } else if showsLiveMapBrowseChrome {
+                liveMapBrowseOverlays
+            } else {
+                standardChromeOverlay
             }
-            .padding(.horizontal, 4)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .routeScreenBackground()
-        .toolbar(.hidden, for: .navigationBar)
-        .toolbarBackground(.hidden, for: .navigationBar)
     }
 
-    private var topBar: some View {
-        HStack(alignment: .top) {
-            if uiState.isMapFocus {
+    private var focusOverlay: some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .top) {
                 Button {
                     uiState.exitMapFocus()
                 } label: {
@@ -127,20 +137,77 @@ struct ActiveRouteChrome<Content: View>: View {
                         .background(RouteAppearance.overlayFill, in: Circle())
                 }
                 .buttonStyle(.plain)
+
+                Spacer(minLength: 0)
             }
+            .padding(.horizontal, 4)
+            .safeAreaPadding(.top, 2)
 
-            Spacer()
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
 
-            if !uiState.isMapFocus {
+    private var liveMapBrowseOverlays: some View {
+        ZStack {
+            Color.clear
+        }
+        .overlay(alignment: .topLeading) {
+            RouteDistanceBubble(
+                covered: RouteFormatting.distance(viewModel.navigationSnapshot?.progressDistanceMeters ?? 0),
+                remaining: RouteFormatting.distance(viewModel.navigationSnapshot?.distanceRemainingMeters ?? 0)
+            )
+            .padding(.leading, 4)
+        }
+        .overlay(alignment: .topTrailing) {
+            ActiveRouteStatusBar(
+                showActivityIcon: !showsSystemWorkoutIndicator,
+                activityKind: viewModel.activityKind,
+                isPaused: viewModel.isPaused
+            )
+            .padding(.trailing, 4)
+        }
+        .overlay(alignment: .bottom) {
+            VStack(spacing: 2) {
+                if let snapshot = viewModel.navigationSnapshot,
+                   let cue = snapshot.nextCue,
+                   let distance = snapshot.distanceToNextCueMeters,
+                   distance <= 500 {
+                    NavigationGuidanceBar(
+                        cue: cue,
+                        distanceMeters: distance,
+                        isOffRoute: snapshot.isOffRoute
+                    )
+                }
+
+                ActiveRoutePageDots(selectedPage: uiState.selectedPage)
+            }
+            .padding(.horizontal, 4)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .ignoresSafeArea(edges: .vertical)
+    }
+
+    private var standardChromeOverlay: some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .top) {
+                Spacer(minLength: 0)
+
                 ActiveRouteStatusBar(
                     showActivityIcon: !showsSystemWorkoutIndicator,
                     activityKind: viewModel.activityKind,
                     isPaused: viewModel.isPaused
                 )
-                .padding(.top, 2)
-                .padding(.trailing, 2)
             }
+            .padding(.horizontal, 4)
+
+            Spacer(minLength: 0)
+
+            ActiveRoutePageDots(selectedPage: uiState.selectedPage)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.horizontal, 4)
+        .ignoresSafeArea(edges: .bottom)
     }
 
     private var showsSystemWorkoutIndicator: Bool {
@@ -177,7 +244,7 @@ struct RouteDistanceBubble: View {
             metricRow(symbol: "flag.fill", value: remaining)
         }
         .padding(.horizontal, 8)
-        .padding(.vertical, 5)
+        .padding(.vertical, 4)
         .background(RouteAppearance.overlayFill, in: RoundedRectangle(cornerRadius: 12))
     }
 
