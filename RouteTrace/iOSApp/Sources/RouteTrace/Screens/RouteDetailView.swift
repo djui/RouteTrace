@@ -283,9 +283,23 @@ struct RouteDetailView: View {
         do {
             _ = try await routeStore.buildOfflinePack(for: route)
             routePackage = try routeStore.loadRoutePackage(for: route)
+        } catch RouteStoreError.offlinePackSavedArchiveFailed {
+            routePackage = try? routeStore.loadRoutePackage(for: route)
+            infoMessage = RouteStoreError.offlinePackSavedArchiveFailed.localizedDescription
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = offlineMapBuildErrorMessage(for: error)
         }
+    }
+
+    private func offlineMapBuildErrorMessage(for error: Error) -> String {
+        if let buildError = error as? OfflinePackBuilder.BuildError {
+            return buildError.localizedDescription
+        }
+        if (error as NSError).domain == NSCocoaErrorDomain,
+           (error as NSError).code == NSFileReadNoSuchFileError {
+            return "Failed to package the offline map for Watch transfer. Try building again."
+        }
+        return error.localizedDescription
     }
 
     @MainActor

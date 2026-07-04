@@ -55,11 +55,18 @@ final class RouteStore: ObservableObject {
     }
 
     @discardableResult
-    func saveRoutePackage(_ package: RoutePackage) throws -> RouteEntity {
+    func saveRoutePackage(_ package: RoutePackage, createArchive: Bool = true) throws -> RouteEntity {
+        let entity = try persistRoutePackage(package)
+        if createArchive {
+            let archiveURL = RoutePackaging.makeArchiveURL(for: package, in: RouteTracePaths.routesRoot)
+            try RoutePackaging.zipRouteDirectory(entity.routeDirectoryURL, to: archiveURL)
+        }
+        return entity
+    }
+
+    private func persistRoutePackage(_ package: RoutePackage) throws -> RouteEntity {
         let encodedPackage = try RouteTracePayloadCoding.encode(package)
-        let routeDirectory = try RoutePackaging.writeRoutePackage(package, to: RouteTracePaths.routesRoot)
-        let archiveURL = RoutePackaging.makeArchiveURL(for: package, in: RouteTracePaths.routesRoot)
-        try RoutePackaging.zipRouteDirectory(routeDirectory, to: archiveURL)
+        _ = try RoutePackaging.writeRoutePackage(package, to: RouteTracePaths.routesRoot)
 
         let entity: RouteEntity
         if let existing = try fetchRoute(id: package.id) {
@@ -163,7 +170,13 @@ final class RouteStore: ObservableObject {
         let builder = OfflinePackBuilder()
         let updated = try await builder.buildPack(for: package, into: entity.routeDirectoryURL)
         package = updated
-        _ = try saveRoutePackage(updated)
+        let saved = try persistRoutePackage(updated)
+        let archiveURL = RoutePackaging.makeArchiveURL(for: updated, in: RouteTracePaths.routesRoot)
+        do {
+            try RoutePackaging.zipRouteDirectory(saved.routeDirectoryURL, to: archiveURL)
+        } catch {
+            throw RouteStoreError.offlinePackSavedArchiveFailed
+        }
         guard let refreshed = try fetchRoute(id: entity.id) else {
             throw RouteStoreError.routeNotFound
         }
@@ -256,6 +269,7 @@ enum RouteStoreError: Error, LocalizedError {
     case routeNotFound
     case routePackageUnavailable
     case sourceGPXUnavailable
+    case offlinePackSavedArchiveFailed
 
     var errorDescription: String? {
         switch self {
@@ -265,6 +279,8 @@ enum RouteStoreError: Error, LocalizedError {
             "The route package is not available locally or in iCloud."
         case .sourceGPXUnavailable:
             "The original GPX file is not available. Re-import this route to change its activity type."
+        case .offlinePackSavedArchiveFailed:
+            "Offline map downloaded, but the Watch transfer package could not be created. Tap Send to Watch to retry."
         }
     }
 }

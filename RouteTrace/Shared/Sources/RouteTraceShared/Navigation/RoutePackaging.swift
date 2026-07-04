@@ -48,12 +48,13 @@ public enum RoutePackaging {
             try FileManager.default.removeItem(at: archiveURL)
         }
 
+        let routeDirectory = routeDirectory.standardizedFileURL
         var entries: [RoutePackArchiveIndex.Entry] = []
         var payload = Data()
 
         let relativePaths = try collectPackableFiles(in: routeDirectory)
         for relativePath in relativePaths.sorted() {
-            let fileURL = routeDirectory.appendingPathComponent(relativePath)
+            let fileURL = routeDirectory.appendingPathComponent(relativePath, isDirectory: false)
             let fileData = try Data(contentsOf: fileURL)
             entries.append(
                 RoutePackArchiveIndex.Entry(
@@ -155,6 +156,7 @@ public enum RoutePackaging {
 
     private static func collectPackableFiles(in routeDirectory: URL) throws -> [String] {
         let fileManager = FileManager.default
+        let routeDirectory = routeDirectory.standardizedFileURL
         var results: [String] = []
 
         let routeJSON = routeDirectory.appendingPathComponent("route.json")
@@ -176,8 +178,7 @@ public enum RoutePackaging {
             )
             while let url = enumerator?.nextObject() as? URL {
                 guard (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else { continue }
-                let relative = url.path.replacingOccurrences(of: routeDirectory.path + "/", with: "")
-                results.append(relative)
+                results.append("tiles/\(url.lastPathComponent)")
             }
         }
 
