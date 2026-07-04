@@ -37,7 +37,8 @@ struct AltitudeChartView: View {
                 Chart(samples) { sample in
                     AreaMark(
                         x: .value("Distance", sample.distanceMeters / 1000),
-                        y: .value("Elevation", sample.elevationMeters)
+                        yStart: .value("Baseline", elevationYDomain.lowerBound),
+                        yEnd: .value("Elevation", sample.elevationMeters)
                     )
                     .foregroundStyle(
                         LinearGradient(
@@ -57,6 +58,7 @@ struct AltitudeChartView: View {
                 .chartXAxisLabel("Distance (km)")
                 .chartYAxisLabel("Elevation (m)")
                 .chartYScale(domain: elevationYDomain)
+                .clipped()
             } else {
                 ContentUnavailableView(
                     "No Elevation Data",
