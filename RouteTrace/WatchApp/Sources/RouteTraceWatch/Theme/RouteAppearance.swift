@@ -58,8 +58,14 @@ enum RouteAppearance {
     static let routeStrokeWidth: CGFloat = 4.5
     static let routeOutlineColor = Color.black.opacity(0.55)
 
-    /// Extra inset beyond the system safe area for large watch corner radii.
-    static let watchDisplayInset: CGFloat = 6
+    /// Top-leading controls (X) — keep clear of large corner radius.
+    static let watchCornerClearance: CGFloat = 12
+
+    /// Top/bottom chrome sitting near flat edges (not extreme corners).
+    static let watchEdgeInset: CGFloat = 2
+
+    /// Crown zoom step — larger = softer per detent.
+    static let mapCrownStep: Double = 0.004
 }
 
 extension View {

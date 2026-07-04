@@ -57,7 +57,8 @@ struct ActivitySummaryView: View {
         .overlay(alignment: .bottom) {
             saveButton
                 .padding(.horizontal, Self.contentHorizontalPadding)
-                .padding(.bottom, 4)
+                .padding(.bottom, RouteAppearance.watchEdgeInset)
+                .ignoresSafeArea(edges: .bottom)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .navigationTitle("Finish")

@@ -102,7 +102,7 @@ struct OfflineMapView: View {
                     spanBinding,
                     from: 0.002,
                     through: 0.04,
-                    by: 0.002,
+                    by: RouteAppearance.mapCrownStep,
                     sensitivity: .low,
                     isContinuous: false,
                     isHapticFeedbackEnabled: isMapFocused

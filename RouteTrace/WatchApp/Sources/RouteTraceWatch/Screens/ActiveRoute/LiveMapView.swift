@@ -111,8 +111,8 @@ struct LiveMapView: View {
 
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, 4)
-            .padding(.top, RouteAppearance.watchDisplayInset)
+            .padding(.leading, RouteAppearance.watchCornerClearance)
+            .padding(.top, RouteAppearance.watchCornerClearance)
 
             Spacer(minLength: 0)
                 .allowsHitTesting(false)
@@ -215,7 +215,7 @@ private struct MapCrownInteraction: ViewModifier {
                     $mapSpan,
                     from: 0.002,
                     through: 0.04,
-                    by: 0.002,
+                    by: RouteAppearance.mapCrownStep,
                     sensitivity: .low,
                     isContinuous: false,
                     isHapticFeedbackEnabled: hapticFeedback

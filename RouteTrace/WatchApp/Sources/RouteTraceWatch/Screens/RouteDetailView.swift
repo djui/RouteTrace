@@ -7,7 +7,6 @@ struct RouteDetailView: View {
 
     @Environment(WatchRouteStore.self) private var routeStore
     @Environment(WatchPreferences.self) private var preferences
-    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dismiss) private var dismiss
 
     @State private var selectedActivityKind: ActivityKind
@@ -62,8 +61,12 @@ struct RouteDetailView: View {
             }
         }
         .listSectionSpacing(8)
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            startRouteBottomBar
+        .padding(.bottom, 44)
+        .overlay(alignment: .bottom) {
+            startRouteControl
+                .padding(.horizontal, 16)
+                .padding(.bottom, RouteAppearance.watchEdgeInset)
+                .ignoresSafeArea(edges: .bottom)
         }
         .navigationTitle(route.name)
         .navigationBarTitleDisplayMode(.inline)
@@ -97,18 +100,6 @@ struct RouteDetailView: View {
         case .partial: "Partial"
         case .missing: "Not available"
         }
-    }
-
-    @ViewBuilder
-    private var startRouteBottomBar: some View {
-        startRouteControl
-            .padding(.horizontal, 4)
-            .frame(maxWidth: .infinity)
-            .background {
-                RouteAppearance.canvas(for: colorScheme)
-                    .ignoresSafeArea(edges: .bottom)
-            }
-            .ignoresSafeArea(edges: .bottom)
     }
 
     @ViewBuilder

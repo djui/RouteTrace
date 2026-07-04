@@ -132,7 +132,7 @@ struct ActiveRouteChrome<Content: View>: View {
                     remaining: RouteFormatting.distance(viewModel.navigationSnapshot?.distanceRemainingMeters ?? 0)
                 )
                 .padding(.leading, 4)
-                .padding(.top, RouteAppearance.watchDisplayInset)
+                .padding(.top, RouteAppearance.watchEdgeInset)
             }
             .overlay(alignment: .topTrailing) {
                 ActiveRouteStatusBar(
@@ -141,7 +141,7 @@ struct ActiveRouteChrome<Content: View>: View {
                     isPaused: viewModel.isPaused
                 )
                 .padding(.trailing, 4)
-                .padding(.top, RouteAppearance.watchDisplayInset)
+                .padding(.top, RouteAppearance.watchEdgeInset)
             }
             .overlay(alignment: .bottom) {
                 VStack(spacing: 2) {
@@ -159,8 +159,9 @@ struct ActiveRouteChrome<Content: View>: View {
                     ActiveRoutePageDots(selectedPage: uiState.selectedPage)
                 }
                 .padding(.horizontal, 4)
-                .padding(.bottom, RouteAppearance.watchDisplayInset)
+                .padding(.bottom, RouteAppearance.watchEdgeInset)
             }
+            .ignoresSafeArea(edges: .vertical)
     }
 
     private var standardChromeOverlay: some View {
