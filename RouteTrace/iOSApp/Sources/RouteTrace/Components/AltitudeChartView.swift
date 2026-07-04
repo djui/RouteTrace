@@ -22,6 +22,15 @@ struct AltitudeChartView: View {
         samples.count >= 2
     }
 
+    private var elevationYDomain: ClosedRange<Double> {
+        let elevations = samples.map(\.elevationMeters)
+        let minElevation = elevations.min() ?? 0
+        let maxElevation = elevations.max() ?? minElevation
+        let range = max(maxElevation - minElevation, 1)
+        let margin = range * 0.08
+        return (minElevation - margin)...(maxElevation + margin)
+    }
+
     var body: some View {
         Group {
             if hasData {
@@ -47,6 +56,7 @@ struct AltitudeChartView: View {
                 }
                 .chartXAxisLabel("Distance (km)")
                 .chartYAxisLabel("Elevation (m)")
+                .chartYScale(domain: elevationYDomain)
             } else {
                 ContentUnavailableView(
                     "No Elevation Data",
