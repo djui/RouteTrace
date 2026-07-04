@@ -27,7 +27,7 @@ struct RouteLibraryView: View {
             Group {
                 if routes.isEmpty {
                     ContentUnavailableView {
-                        Label("No Routes", systemImage: "map")
+                        Label("No Routes", systemImage: "point.bottomleft.forward.to.point.topright.scurvepath")
                     } description: {
                         Text("Import a GPX file to get started.")
                     } actions: {
@@ -60,6 +60,24 @@ struct RouteLibraryView: View {
                             } label: {
                                 Label("Delete", systemImage: "trash")
                             }
+                        }
+                        .confirmationDialog(
+                            "Delete this route?",
+                            isPresented: Binding(
+                                get: { routePendingDelete?.id == route.id },
+                                set: { if !$0 { routePendingDelete = nil } }
+                            ),
+                            titleVisibility: .visible
+                        ) {
+                            Button("Delete Route", role: .destructive) {
+                                deleteRoute(route)
+                                routePendingDelete = nil
+                            }
+                            Button("Cancel", role: .cancel) {
+                                routePendingDelete = nil
+                            }
+                        } message: {
+                            Text("This removes the route and any offline map pack from your iPhone.")
                         }
                     }
                 }
@@ -103,26 +121,6 @@ struct RouteLibraryView: View {
                 Button("OK", role: .cancel) {}
             } message: {
                 Text(successMessage ?? "")
-            }
-            .confirmationDialog(
-                "Delete this route?",
-                isPresented: Binding(
-                    get: { routePendingDelete != nil },
-                    set: { if !$0 { routePendingDelete = nil } }
-                ),
-                titleVisibility: .visible
-            ) {
-                Button("Delete Route", role: .destructive) {
-                    if let route = routePendingDelete {
-                        deleteRoute(route)
-                        routePendingDelete = nil
-                    }
-                }
-                Button("Cancel", role: .cancel) {
-                    routePendingDelete = nil
-                }
-            } message: {
-                Text("This removes the route and any offline map pack from your iPhone.")
             }
             #if canImport(WatchConnectivity)
             .onAppear {
@@ -205,9 +203,8 @@ private struct RouteRowView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text(route.name)
                     .font(.headline)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .layoutPriority(1)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
 
                 HStack(spacing: 8) {
                     metadataLabel(
@@ -227,6 +224,7 @@ private struct RouteRowView: View {
                     OfflineStatusBadge(status: route.offlineStatus)
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.vertical, 4)
     }

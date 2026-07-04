@@ -107,6 +107,18 @@ struct ActivityResultView: View {
                 } label: {
                     Label("More", systemImage: "ellipsis")
                 }
+                .confirmationDialog(
+                    "Delete this activity?",
+                    isPresented: $showDeleteConfirmation,
+                    titleVisibility: .visible
+                ) {
+                    Button("Delete Activity", role: .destructive) {
+                        deleteActivity()
+                    }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("This removes the activity from your iPhone.")
+                }
             }
         }
         .fullScreenCover(isPresented: $isMapFullscreenPresented) {
@@ -121,18 +133,6 @@ struct ActivityResultView: View {
             if let exportURL {
                 ShareSheet(items: [exportURL])
             }
-        }
-        .confirmationDialog(
-            "Delete this activity?",
-            isPresented: $showDeleteConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Delete Activity", role: .destructive) {
-                deleteActivity()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This removes the activity from your iPhone.")
         }
         .alert("Activity Error", isPresented: Binding(
             get: { errorMessage != nil },

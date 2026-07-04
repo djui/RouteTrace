@@ -104,7 +104,7 @@ struct RouteTraceRootView: View {
         connectivityManager: PhoneConnectivityManager
     ) -> some View {
         TabView {
-            Tab("Routes", systemImage: "map") {
+            Tab("Routes", systemImage: "point.bottomleft.forward.to.point.topright.scurvepath") {
                 RouteLibraryView()
             }
 
@@ -120,7 +120,7 @@ struct RouteTraceRootView: View {
     @ViewBuilder
     private func mainTabs(routeStore: RouteStore) -> some View {
         TabView {
-            Tab("Routes", systemImage: "map") {
+            Tab("Routes", systemImage: "point.bottomleft.forward.to.point.topright.scurvepath") {
                 RouteLibraryView()
             }
 

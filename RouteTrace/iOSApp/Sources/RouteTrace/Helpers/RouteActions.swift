@@ -83,6 +83,8 @@ struct RouteActionMenuItems: View {
         }
         .disabled(isExporting || routePackage == nil)
 
+        Divider()
+
         Button(role: .destructive) {
             onDelete()
         } label: {

@@ -15,7 +15,6 @@ struct RouteDetailView: View {
     @State private var isLoading = true
     @State private var isBuildingOfflinePack = false
     @State private var isDeletingOfflinePack = false
-    @State private var showDeleteOfflineConfirm = false
     @State private var isSendingToWatch = false
     @State private var isUpdatingActivityKind = false
     @State private var isExporting = false
@@ -73,18 +72,6 @@ struct RouteDetailView: View {
                     trackPoints: []
                 )
             }
-        }
-        .confirmationDialog(
-            "Delete this route?",
-            isPresented: $showDeleteConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Delete Route", role: .destructive) {
-                deleteRoute()
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This removes the route and any offline map pack from your iPhone.")
         }
         .alert("Route Error", isPresented: Binding(
             get: { errorMessage != nil },
@@ -183,16 +170,8 @@ struct RouteDetailView: View {
                 isBuilding: isBuildingOfflinePack,
                 isDeleting: isDeletingOfflinePack,
                 onAction: { Task { await buildOfflinePack() } },
-                onDelete: route.offlineStatus == .missing ? nil : { showDeleteOfflineConfirm = true }
+                onDelete: route.offlineStatus == .missing ? nil : { Task { await deleteOfflinePack() } }
             )
-        }
-        .confirmationDialog("Delete offline map?", isPresented: $showDeleteOfflineConfirm, titleVisibility: .visible) {
-            Button("Delete Map", role: .destructive) {
-                Task { await deleteOfflinePack() }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("The route stays on your iPhone; only downloaded map tiles are removed.")
         }
     }
 
@@ -213,6 +192,18 @@ struct RouteDetailView: View {
             Label("More", systemImage: "ellipsis")
         }
         .disabled(isExporting)
+        .confirmationDialog(
+            "Delete this route?",
+            isPresented: $showDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Route", role: .destructive) {
+                deleteRoute()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes the route and any offline map pack from your iPhone.")
+        }
     }
 
     #if canImport(WatchConnectivity)
@@ -336,6 +327,8 @@ private struct OfflineMapActionRow: View {
     let onAction: () -> Void
     var onDelete: (() -> Void)?
 
+    @State private var showDeleteConfirm = false
+
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: "map.fill")
@@ -355,13 +348,23 @@ private struct OfflineMapActionRow: View {
             Spacer(minLength: 8)
 
             if let onDelete, status != .missing {
-                Button(action: onDelete) {
+                Button {
+                    showDeleteConfirm = true
+                } label: {
                     Text("Delete")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(.red)
                 }
                 .buttonStyle(.plain)
                 .disabled(isDeleting || isBuilding)
+                .confirmationDialog("Delete offline map?", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
+                    Button("Delete Map", role: .destructive) {
+                        onDelete()
+                    }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("The route stays on your iPhone; only downloaded map tiles are removed.")
+                }
             }
 
             Button(action: onAction) {
