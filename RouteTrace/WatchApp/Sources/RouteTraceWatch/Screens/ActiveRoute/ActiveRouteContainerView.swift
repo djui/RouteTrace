@@ -5,40 +5,36 @@ struct ActiveRouteContainerView: View {
     @Bindable var viewModel: ActiveRouteViewModel
 
     @Environment(WatchPreferences.self) private var preferences
-    @Environment(\.isLuminanceReduced) private var isLuminanceReduced
 
     @State private var uiState = ActiveRouteUIState()
-    @State private var showFinishConfirm = false
 
     var body: some View {
         Group {
             if viewModel.isShowingSummary {
-                ActivitySummaryView(viewModel: viewModel)
+                NavigationStack {
+                    ActivitySummaryView(viewModel: viewModel)
+                }
             } else if uiState.isMapFocus {
                 focusedMapPage
             } else {
                 carousel
             }
         }
-        .confirmationDialog("Finish this activity?", isPresented: $showFinishConfirm, titleVisibility: .visible) {
-            Button("Review Summary") {
-                viewModel.prepareSummary(preferences: preferences)
-            }
-            Button("Cancel", role: .cancel) {}
-        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .routeScreenBackground()
     }
 
     private var carousel: some View {
-        ActiveRouteChrome(uiState: uiState, viewModel: viewModel, showFinishConfirm: $showFinishConfirm) {
+        ActiveRouteChrome(uiState: uiState, viewModel: viewModel) {
             TabView(selection: $uiState.selectedPage) {
-                RouteMapView(viewModel: viewModel, uiState: uiState)
-                    .tag(RoutePage.routeMap)
-
-                FollowRouteView(viewModel: viewModel)
-                    .tag(RoutePage.followRoute)
+                RouteControlsView(viewModel: viewModel)
+                    .tag(RoutePage.controls)
 
                 LiveMapView(viewModel: viewModel, uiState: uiState)
                     .tag(RoutePage.liveMap)
+
+                DirectionsView(viewModel: viewModel)
+                    .tag(RoutePage.directions)
 
                 AltitudeProfileView(viewModel: viewModel)
                     .tag(RoutePage.altitude)
@@ -47,20 +43,15 @@ struct ActiveRouteContainerView: View {
                     .tag(RoutePage.metrics)
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
+            .disabled(uiState.isMapFocus)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
     @ViewBuilder
     private var focusedMapPage: some View {
-        ActiveRouteChrome(uiState: uiState, viewModel: viewModel, showFinishConfirm: $showFinishConfirm) {
-            switch uiState.selectedPage {
-            case .routeMap:
-                RouteMapView(viewModel: viewModel, uiState: uiState)
-            case .liveMap:
-                LiveMapView(viewModel: viewModel, uiState: uiState)
-            default:
-                EmptyView()
-            }
+        ActiveRouteChrome(uiState: uiState, viewModel: viewModel) {
+            LiveMapView(viewModel: viewModel, uiState: uiState)
         }
     }
 }

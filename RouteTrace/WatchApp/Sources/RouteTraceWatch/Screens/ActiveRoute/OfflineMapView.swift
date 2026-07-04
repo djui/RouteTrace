@@ -4,13 +4,28 @@ import UIKit
 
 struct OfflineMapView: View {
     @Bindable var viewModel: ActiveRouteViewModel
+    var uiState: ActiveRouteUIState?
     var showChrome: Bool = true
 
     @Environment(WatchRouteStore.self) private var routeStore
+    @Environment(\.colorScheme) private var colorScheme
 
     @State private var tileImages: [String: CGImage] = [:]
     @State private var renderZoom = 14
+    @State private var activeTile = TileCoordinate(zoom: 0, x: 0, y: 0)
     @State private var loadError: String?
+    @State private var localSpan: Double = 0.012
+
+    private var spanBinding: Binding<Double> {
+        if let uiState {
+            Binding(
+                get: { uiState.mapSpan },
+                set: { uiState.mapSpan = $0 }
+            )
+        } else {
+            $localSpan
+        }
+    }
 
     var body: some View {
         if showChrome {
@@ -30,17 +45,29 @@ struct OfflineMapView: View {
                 Canvas { context, size in
                     drawMap(context: &context, size: size)
                 }
-                .background(Color(white: 0.12))
+                .background(RouteAppearance.offlineMapCanvas(for: colorScheme))
 
                 if showChrome, viewModel.navigationSnapshot?.isOffRoute == true {
                     offRouteBanner
                 }
             }
         }
-        .onAppear {
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .focusable(true)
+        .digitalCrownRotation(
+            spanBinding,
+            from: 0.002,
+            through: 0.04,
+            by: 0.001,
+            sensitivity: .medium,
+            isContinuous: false,
+            isHapticFeedbackEnabled: true
+        )
+        .onAppear { loadTiles() }
+        .onChange(of: viewModel.navigationSnapshot?.currentCoordinate?.latitude) { _, _ in
             loadTiles()
         }
-        .onChange(of: viewModel.navigationSnapshot?.currentCoordinate?.latitude) { _, _ in
+        .onChange(of: spanBinding.wrappedValue) { _, _ in
             loadTiles()
         }
         .overlay(alignment: .bottom) {
@@ -71,35 +98,30 @@ struct OfflineMapView: View {
         }
 
         Task {
-            do {
-                let manifest = try tileStore.manifest()
-                let zoom = manifest?.maxZoom ?? 0
-                renderZoom = manifest != nil ? zoom : 0
+            let manifest = try? tileStore.manifest()
+            let result = tileStore.bestAvailableTile(for: coordinate, manifest: manifest)
 
-                var images: [String: CGImage] = [:]
-                let tiles = tileStore.tilesCovering(coordinate: coordinate, zoom: renderZoom)
-
-                for tile in tiles {
-                    let url = tileStore.tileURL(for: tile)
-                    if let image = loadCGImage(from: url) {
-                        images[tile.filename] = image
-                    }
+            if let result {
+                renderZoom = result.zoom
+                activeTile = result.tile
+                if let image = loadCGImage(from: tileStore.tileURL(for: result.tile)) {
+                    tileImages = [result.tile.filename: image]
+                    loadError = result.usedFallback ? "Partial offline map" : nil
+                } else {
+                    tileImages = [:]
+                    loadError = "Partial offline map"
                 }
-
-                if images.isEmpty, renderZoom > 0 {
-                    // Fallback to L0 world tile if corridor tiles are missing.
-                    renderZoom = 0
-                    let fallback = TileCoordinate(zoom: 0, x: 0, y: 0)
-                    let url = tileStore.tileURL(for: fallback)
-                    if let image = loadCGImage(from: url) {
-                        images[fallback.filename] = image
-                    }
+            } else {
+                renderZoom = 0
+                activeTile = TileCoordinate(zoom: 0, x: 0, y: 0)
+                let fallbackURL = tileStore.tileURL(for: activeTile)
+                if let image = loadCGImage(from: fallbackURL) {
+                    tileImages = [activeTile.filename: image]
+                    loadError = nil
+                } else {
+                    tileImages = [:]
+                    loadError = "Partial offline map"
                 }
-
-                tileImages = images
-                loadError = images.isEmpty ? "No offline tiles — showing route only." : nil
-            } catch {
-                loadError = error.localizedDescription
             }
         }
     }
@@ -139,14 +161,29 @@ struct OfflineMapView: View {
             width: size.width * 0.7,
             height: size.height * 0.6
         )
-        var routePath = Path()
-        for (index, point) in route.route.enumerated() {
-            let nx = (point.longitude - box.minLongitude) / max(0.0001, box.maxLongitude - box.minLongitude)
-            let ny = 1 - (point.latitude - box.minLatitude) / max(0.0001, box.maxLatitude - box.minLatitude)
+        let progress = viewModel.navigationSnapshot?.progressDistanceMeters ?? 0
+        let split = ActiveRouteMapOverlay.splitRouteCoordinates(route, atProgressMeters: progress)
+        strokePath(context: &context, coordinates: split.traveled, box: box, routeRect: routeRect, color: .green)
+        strokePath(context: &context, coordinates: split.remaining, box: box, routeRect: routeRect, color: .blue)
+    }
+
+    private func strokePath(
+        context: inout GraphicsContext,
+        coordinates: [CLLocationCoordinate2D],
+        box: GeoBoundingBox,
+        routeRect: CGRect,
+        color: Color
+    ) {
+        guard coordinates.count >= 2 else { return }
+        var path = Path()
+        for (index, coordinate) in coordinates.enumerated() {
+            let nx = (coordinate.longitude - box.minLongitude) / max(0.0001, box.maxLongitude - box.minLongitude)
+            let ny = 1 - (coordinate.latitude - box.minLatitude) / max(0.0001, box.maxLatitude - box.minLatitude)
             let pt = CGPoint(x: routeRect.minX + routeRect.width * nx, y: routeRect.minY + routeRect.height * ny)
-            if index == 0 { routePath.move(to: pt) } else { routePath.addLine(to: pt) }
+            if index == 0 { path.move(to: pt) } else { path.addLine(to: pt) }
         }
-        context.stroke(routePath, with: .color(.blue.opacity(0.8)), lineWidth: 2)
+        context.stroke(path, with: .color(.black.opacity(0.5)), lineWidth: 4)
+        context.stroke(path, with: .color(color), lineWidth: 2.5)
     }
 
     private func drawTiles(
@@ -155,70 +192,35 @@ struct OfflineMapView: View {
         center: GeoCoordinate,
         route: RoutePackage
     ) {
-        guard let tileStore = routeStore.tileStore(for: route.id) else { return }
-        let tile = tileStore.tilesCovering(coordinate: center, zoom: renderZoom).first ?? TileCoordinate(zoom: renderZoom, x: 0, y: 0)
-
-        if let image = tileImages[tile.filename] {
+        if let image = tileImages[activeTile.filename] {
             context.draw(Image(decorative: image, scale: 1), in: CGRect(origin: .zero, size: size))
         }
     }
 
     private func drawRouteOverlay(context: inout GraphicsContext, size: CGSize, route: RoutePackage) {
-        guard renderZoom > 0,
-              let tileStore = routeStore.tileStore(for: route.id),
-              let center = viewModel.navigationSnapshot?.currentCoordinate ?? Optional(route.boundingBox.center) else { return }
+        guard renderZoom > 0 else { return }
 
-        let tile = tileStore.tilesCovering(coordinate: center, zoom: renderZoom).first
-            ?? TileCoordinate(zoom: renderZoom, x: MapMath.tileX(longitude: center.longitude, zoom: renderZoom), y: MapMath.tileY(latitude: center.latitude, zoom: renderZoom))
+        let tile = activeTile
+        let progress = viewModel.navigationSnapshot?.progressDistanceMeters ?? 0
+        let split = ActiveRouteMapOverlay.splitRouteCoordinates(route, atProgressMeters: progress)
 
-        var path = Path()
-        for (index, point) in route.route.enumerated() {
+        strokeProjectedPath(context: &context, coordinates: split.traveled, tile: tile, size: size, color: .green)
+        strokeProjectedPath(context: &context, coordinates: split.remaining, tile: tile, size: size, color: .blue)
+
+        if let snapshot = viewModel.navigationSnapshot,
+           let cue = snapshot.nextCue,
+           let distance = snapshot.distanceToNextCueMeters,
+           distance <= 500 {
             let pixel = MapMath.coordinateToPixel(
-                coordinate: point.coordinate,
-                tileX: tile.x,
-                tileY: tile.y,
-                zoom: renderZoom
-            )
-            let pt = CGPoint(
-                x: size.width * pixel.x / 256,
-                y: size.height * pixel.y / 256
-            )
-            if index == 0 {
-                path.move(to: pt)
-            } else {
-                path.addLine(to: pt)
-            }
-        }
-        context.stroke(path, with: .color(.blue), lineWidth: 2)
-
-        let actual = ActiveRouteMapOverlay.actualTrackCoordinates(from: viewModel)
-        if actual.count >= 2 {
-            var actualPath = Path()
-            for (index, coordinate) in actual.enumerated() {
-                let geo = GeoCoordinate(latitude: coordinate.latitude, longitude: coordinate.longitude)
-                let pixel = MapMath.coordinateToPixel(
-                    coordinate: geo,
-                    tileX: tile.x,
-                    tileY: tile.y,
-                    zoom: renderZoom
-                )
-                let pt = CGPoint(x: size.width * pixel.x / 256, y: size.height * pixel.y / 256)
-                if index == 0 { actualPath.move(to: pt) } else { actualPath.addLine(to: pt) }
-            }
-            context.stroke(actualPath, with: .color(.green), lineWidth: 2)
-        }
-
-        for event in viewModel.recording.offRouteEvents {
-            let pixel = MapMath.coordinateToPixel(
-                coordinate: event.coordinate,
+                coordinate: cue.coordinate,
                 tileX: tile.x,
                 tileY: tile.y,
                 zoom: renderZoom
             )
             let pt = CGPoint(x: size.width * pixel.x / 256, y: size.height * pixel.y / 256)
             context.fill(
-                Path(ellipseIn: CGRect(x: pt.x - 4, y: pt.y - 4, width: 8, height: 8)),
-                with: .color(event.endedAt == nil ? .red : .orange)
+                Path(ellipseIn: CGRect(x: pt.x - 10, y: pt.y - 10, width: 20, height: 20)),
+                with: .color(.black.opacity(0.75))
             )
         }
 
@@ -230,7 +232,32 @@ struct OfflineMapView: View {
                 zoom: renderZoom
             )
             let pt = CGPoint(x: size.width * pixel.x / 256, y: size.height * pixel.y / 256)
-            context.fill(Path(ellipseIn: CGRect(x: pt.x - 4, y: pt.y - 4, width: 8, height: 8)), with: .color(.green))
+            context.fill(Path(ellipseIn: CGRect(x: pt.x - 5, y: pt.y - 5, width: 10, height: 10)), with: .color(.blue))
+            context.stroke(Path(ellipseIn: CGRect(x: pt.x - 5, y: pt.y - 5, width: 10, height: 10)), with: .color(.white), lineWidth: 1.5)
         }
+    }
+
+    private func strokeProjectedPath(
+        context: inout GraphicsContext,
+        coordinates: [CLLocationCoordinate2D],
+        tile: TileCoordinate,
+        size: CGSize,
+        color: Color
+    ) {
+        guard coordinates.count >= 2 else { return }
+        var path = Path()
+        for (index, coordinate) in coordinates.enumerated() {
+            let geo = GeoCoordinate(latitude: coordinate.latitude, longitude: coordinate.longitude)
+            let pixel = MapMath.coordinateToPixel(
+                coordinate: geo,
+                tileX: tile.x,
+                tileY: tile.y,
+                zoom: renderZoom
+            )
+            let pt = CGPoint(x: size.width * pixel.x / 256, y: size.height * pixel.y / 256)
+            if index == 0 { path.move(to: pt) } else { path.addLine(to: pt) }
+        }
+        context.stroke(path, with: .color(.black.opacity(0.5)), lineWidth: 4)
+        context.stroke(path, with: .color(color), lineWidth: 2.5)
     }
 }

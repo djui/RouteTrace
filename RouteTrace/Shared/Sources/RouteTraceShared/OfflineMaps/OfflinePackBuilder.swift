@@ -98,17 +98,46 @@ public final class OfflinePackBuilder {
         )
 
         let tilesDirectory = routeDirectory.appendingPathComponent("tiles", isDirectory: true)
+        let manifestURL = routeDirectory.appendingPathComponent("manifest.json")
+        if FileManager.default.fileExists(atPath: tilesDirectory.path) {
+            try FileManager.default.removeItem(at: tilesDirectory)
+        }
+        if FileManager.default.fileExists(atPath: manifestURL.path) {
+            try FileManager.default.removeItem(at: manifestURL)
+        }
         try FileManager.default.createDirectory(at: tilesDirectory, withIntermediateDirectories: true)
 
         var totalBytes: Int64 = 0
+        var writtenTiles: [TileCoordinate] = []
 
-        for tile in tiles {
+        do {
+            for tile in tiles {
+                let tileURL = tilesDirectory.appendingPathComponent(tile.filename)
+                let data = try await snapshotTile(tile)
+                try data.write(to: tileURL, options: .atomic)
+                guard FileManager.default.fileExists(atPath: tileURL.path) else {
+                    throw BuildError.snapshotFailed
+                }
+                writtenTiles.append(tile)
+                totalBytes += Int64(data.count)
+                if totalBytes > maxPackBytes {
+                    throw BuildError.packTooLarge(totalBytes)
+                }
+            }
+        } catch {
+            try? FileManager.default.removeItem(at: tilesDirectory)
+            try? FileManager.default.removeItem(at: manifestURL)
+            throw error
+        }
+
+        for tile in writtenTiles {
             let tileURL = tilesDirectory.appendingPathComponent(tile.filename)
-            let data = try await snapshotTile(tile)
-            try data.write(to: tileURL, options: .atomic)
-            totalBytes += Int64(data.count)
-            if totalBytes > maxPackBytes {
-                throw BuildError.packTooLarge(totalBytes)
+            guard FileManager.default.fileExists(atPath: tileURL.path),
+                  let attrs = try? FileManager.default.attributesOfItem(atPath: tileURL.path),
+                  let size = attrs[.size] as? Int64, size > 0 else {
+                try? FileManager.default.removeItem(at: tilesDirectory)
+                try? FileManager.default.removeItem(at: manifestURL)
+                throw BuildError.snapshotFailed
             }
         }
 
@@ -120,7 +149,6 @@ public final class OfflinePackBuilder {
             packSizeBytes: totalBytes
         )
 
-        let manifestURL = routeDirectory.appendingPathComponent("manifest.json")
         try RouteTracePayloadCoding.encode(manifest).write(to: manifestURL, options: .atomic)
 
         return RoutePackage(
@@ -190,5 +218,32 @@ public struct OfflineTileStore: Sendable {
 
     public func tilesCovering(coordinate: GeoCoordinate, zoom: Int) -> [TileCoordinate] {
         [TileCoordinate(zoom: zoom, x: MapMath.tileX(longitude: coordinate.longitude, zoom: zoom), y: MapMath.tileY(latitude: coordinate.latitude, zoom: zoom))]
+    }
+
+    public func tileExists(_ tile: TileCoordinate) -> Bool {
+        FileManager.default.fileExists(atPath: tileURL(for: tile).path)
+    }
+
+    public struct ResolvedTile: Sendable {
+        public let tile: TileCoordinate
+        public let zoom: Int
+        public let usedFallback: Bool
+    }
+
+    public func bestAvailableTile(for coordinate: GeoCoordinate, manifest: OfflineMapManifest?) -> ResolvedTile? {
+        if let manifest {
+            for zoom in stride(from: manifest.maxZoom, through: manifest.minZoom, by: -1) {
+                let tile = tilesCovering(coordinate: coordinate, zoom: zoom)[0]
+                if tileExists(tile) {
+                    return ResolvedTile(tile: tile, zoom: zoom, usedFallback: zoom < manifest.maxZoom)
+                }
+            }
+        }
+
+        let fallback = TileCoordinate(zoom: 0, x: 0, y: 0)
+        if tileExists(fallback) {
+            return ResolvedTile(tile: fallback, zoom: 0, usedFallback: true)
+        }
+        return nil
     }
 }

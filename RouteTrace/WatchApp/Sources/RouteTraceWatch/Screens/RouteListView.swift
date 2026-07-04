@@ -9,6 +9,7 @@ struct RouteListView: View {
     @State private var showingSettings = false
     @State private var showActiveRoute = false
     @State private var didAttemptRestore = false
+    @State private var routePendingDelete: RoutePackage?
 
     var body: some View {
         NavigationStack {
@@ -38,6 +39,13 @@ struct RouteListView: View {
                                     NavigationLink(value: route.id) {
                                         RouteRowView(route: route)
                                     }
+                                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                        Button(role: .destructive) {
+                                            routePendingDelete = route
+                                        } label: {
+                                            Label("Delete", systemImage: "trash")
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -45,8 +53,9 @@ struct RouteListView: View {
                 }
             }
             .navigationTitle("Routes")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .topBarLeading) {
                     Button {
                         showingSettings = true
                     } label: {
@@ -60,8 +69,28 @@ struct RouteListView: View {
                     RouteDetailView(route: route, activeViewModel: activeViewModel)
                 }
             }
-            .navigationDestination(isPresented: $showActiveRoute) {
+            .fullScreenCover(isPresented: $showActiveRoute) {
                 ActiveRouteContainerView(viewModel: activeViewModel)
+            }
+            .confirmationDialog(
+                "Delete this route?",
+                isPresented: Binding(
+                    get: { routePendingDelete != nil },
+                    set: { if !$0 { routePendingDelete = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("Delete", role: .destructive) {
+                    if let route = routePendingDelete {
+                        Task {
+                            try? await routeStore.deleteRoute(id: route.id)
+                            routePendingDelete = nil
+                        }
+                    }
+                }
+                Button("Cancel", role: .cancel) {
+                    routePendingDelete = nil
+                }
             }
             .onChange(of: activeViewModel.isActive) { _, isActive in
                 showActiveRoute = isActive
@@ -152,16 +181,20 @@ private struct RouteRowView: View {
     let route: RoutePackage
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(route.name)
-                .font(.headline)
-            HStack {
-                Label(RouteFormatting.distance(route.distanceMeters), systemImage: "ruler")
-                Spacer()
-                offlineBadge
+        HStack(spacing: 10) {
+            RouteShapeThumbnail(route: route)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(route.name)
+                    .font(.headline)
+                HStack {
+                    Label(RouteFormatting.distance(route.distanceMeters), systemImage: "ruler")
+                    Spacer()
+                    offlineBadge
+                }
+                .font(.caption2)
+                .foregroundStyle(.secondary)
             }
-            .font(.caption2)
-            .foregroundStyle(.secondary)
         }
         .padding(.vertical, 2)
     }

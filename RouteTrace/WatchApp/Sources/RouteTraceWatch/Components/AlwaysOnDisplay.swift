@@ -64,7 +64,7 @@ struct ActiveRouteDimmedSummary: View {
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .padding()
-    .background(Color.black)
+    .routeScreenBackground()
   }
 
   private func symbol(for kind: RouteCueKind) -> String {

@@ -22,6 +22,13 @@ struct RouteDetailView: View {
 
     var body: some View {
         Form {
+            Section {
+                RoutePreviewMap(route: route)
+                    .frame(height: 100)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
+            }
+
             Section("Route") {
                 LabeledContent("Distance", value: RouteFormatting.distance(route.distanceMeters))
                 LabeledContent("Elevation", value: RouteFormatting.elevation(route.elevationGainMeters))
@@ -39,19 +46,7 @@ struct RouteDetailView: View {
                 .pickerStyle(.navigationLink)
             }
 
-            Section("Actions") {
-                if activeViewModel.isActive {
-                    Label("Finish current activity first", systemImage: "exclamationmark.triangle")
-                        .foregroundStyle(.orange)
-                } else {
-                    Button {
-                        startRoute()
-                    } label: {
-                        Label(isStarting ? "Starting…" : "Start Route", systemImage: "play.fill")
-                    }
-                    .disabled(isStarting)
-                }
-
+            Section("Manage") {
                 if route.offlineStatus != .missing {
                     Button(role: .destructive) {
                         showDeleteMapConfirm = true
@@ -66,6 +61,11 @@ struct RouteDetailView: View {
                     Label("Delete Route", systemImage: "trash")
                 }
             }
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            startRouteControl
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
         }
         .navigationTitle(route.name)
         .navigationBarTitleDisplayMode(.inline)
@@ -98,6 +98,30 @@ struct RouteDetailView: View {
         case .ready: "Ready"
         case .partial: "Partial"
         case .missing: "Not available"
+        }
+    }
+
+    @ViewBuilder
+    private var startRouteControl: some View {
+        if activeViewModel.isActive {
+            Label("Finish current activity first", systemImage: "exclamationmark.triangle")
+                .font(.caption)
+                .foregroundStyle(.orange)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 10)
+                .background(.orange.opacity(0.15), in: RoundedRectangle(cornerRadius: 12))
+        } else {
+            Button {
+                startRoute()
+            } label: {
+                Label(isStarting ? "Starting…" : "Start", systemImage: "play.fill")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(.green)
+            .controlSize(.large)
+            .disabled(isStarting)
         }
     }
 

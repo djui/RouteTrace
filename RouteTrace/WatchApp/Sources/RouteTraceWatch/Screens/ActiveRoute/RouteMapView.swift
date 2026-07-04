@@ -11,7 +11,7 @@ struct RouteMapView: View {
     @State private var cameraPosition: MapCameraPosition = .automatic
 
     private var isFocused: Bool {
-        uiState.isMapFocus && uiState.selectedPage == .routeMap
+        uiState.isMapFocus && uiState.selectedPage == .liveMap
     }
 
     var body: some View {
@@ -32,7 +32,7 @@ struct RouteMapView: View {
                     Color.clear
                         .contentShape(Rectangle())
                         .onTapGesture {
-                            uiState.selectedPage = .routeMap
+                            uiState.selectedPage = .liveMap
                             uiState.enterMapFocus()
                         }
                 }
@@ -40,6 +40,7 @@ struct RouteMapView: View {
         } dimmed: {
             ActiveRouteDimmedSummary(viewModel: viewModel)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear { fitRoute() }
     }
 
@@ -49,6 +50,7 @@ struct RouteMapView: View {
            route.offlineStatus == .ready || route.offlineStatus == .partial,
            routeStore.tileStore(for: route.id) != nil {
             OfflineMapView(viewModel: viewModel, showChrome: false)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             Map(position: $cameraPosition, interactionModes: isFocused ? .all : []) {
                 if let route = viewModel.routePackage {
@@ -57,6 +59,7 @@ struct RouteMapView: View {
                 }
             }
             .mapStyle(.standard(elevation: .flat, emphasis: .muted))
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .focusable(isFocused)
             .digitalCrownRotation(
                 $uiState.mapSpan,
@@ -100,9 +103,9 @@ struct RouteMapView: View {
         } label: {
             Image(systemName: "scope")
                 .font(.caption)
-                .foregroundStyle(.white.opacity(0.8))
+                .foregroundStyle(RouteAppearance.overlayText.opacity(0.85))
                 .padding(6)
-                .background(.black.opacity(0.45), in: Circle())
+                .background(RouteAppearance.overlayFill, in: Circle())
         }
         .buttonStyle(.plain)
     }

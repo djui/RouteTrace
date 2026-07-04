@@ -32,24 +32,6 @@ struct ActivitySummaryView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                Button(role: .destructive) {
-                    viewModel.discardActivity()
-                    dismiss()
-                } label: {
-                    Label("Discard Activity", systemImage: "trash")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .padding(.top, 16)
-            }
-            .padding()
-            .padding(.bottom, 48)
-        }
-        .navigationTitle(viewModel.routePackage?.name ?? "Summary")
-        .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(true)
-        .toolbar {
-            ToolbarItem(placement: .bottomBar) {
                 Button {
                     Task {
                         isSaving = true
@@ -60,13 +42,33 @@ struct ActivitySummaryView: View {
                 } label: {
                     if isSaving {
                         ProgressView()
+                            .frame(maxWidth: .infinity)
                     } else {
-                        Label("Save", systemImage: "square.and.arrow.up")
+                        Text("Save")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
                     }
                 }
+                .buttonStyle(.borderedProminent)
+                .tint(.green)
                 .disabled(isSaving)
+                .padding(.top, 8)
+
+                Button(role: .destructive) {
+                    viewModel.discardActivity()
+                    dismiss()
+                } label: {
+                    Label("Discard Activity", systemImage: "trash")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .padding(.top, 4)
             }
+            .padding()
         }
+        .navigationTitle("Finish")
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarBackButtonHidden(true)
     }
 
     private var heartRateLabel: String {

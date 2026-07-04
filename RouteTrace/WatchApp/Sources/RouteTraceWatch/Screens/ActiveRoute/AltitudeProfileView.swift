@@ -26,7 +26,7 @@ struct AltitudeProfileView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(.horizontal, 8)
         .padding(.top, 28)
-        .background(Color.black)
+        .routeScreenBackground()
     }
 
     private var fullAltitude: some View {
@@ -60,7 +60,7 @@ struct AltitudeProfileView: View {
         .padding(.horizontal, 8)
         .padding(.bottom, 28)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.black)
+        .routeScreenBackground()
     }
 
     private var currentElevationLabel: String {
@@ -99,6 +99,8 @@ private struct ChartContent: View {
     let progressMeters: Double
     let totalMeters: Double
 
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
         GeometryReader { proxy in
             let minElevation = samples.map(\.elevationMeters).min() ?? 0
@@ -119,7 +121,7 @@ private struct ChartContent: View {
 
                 if totalMeters > 0 {
                     Rectangle()
-                        .fill(.white.opacity(0.08))
+                        .fill(RouteAppearance.chartProgressFill(for: colorScheme))
                         .frame(width: progressX)
 
                     Rectangle()

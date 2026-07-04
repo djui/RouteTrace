@@ -2,24 +2,20 @@ import RouteTraceShared
 import SwiftUI
 
 enum RoutePage: Int, CaseIterable, Identifiable {
-    case routeMap
-    case followRoute
+    case controls
     case liveMap
+    case directions
     case altitude
     case metrics
 
     var id: Int { rawValue }
 
     var activeDotColor: Color {
-        switch self {
-        case .followRoute: .green
-        case .routeMap, .liveMap, .altitude: .blue
-        case .metrics: .white
-        }
+        RouteAppearance.pageDotActive(for: self)
     }
 
     var supportsMapFocus: Bool {
-        self == .routeMap || self == .liveMap
+        self == .liveMap
     }
 }
 
@@ -31,7 +27,7 @@ enum ActiveInteractionMode: Equatable {
 @MainActor
 @Observable
 final class ActiveRouteUIState {
-    var selectedPage: RoutePage = .routeMap
+    var selectedPage: RoutePage = .liveMap
     var interactionMode: ActiveInteractionMode = .browse
     var mapSpan: Double = 0.012
 
@@ -54,7 +50,7 @@ struct ActiveRoutePageDots: View {
         HStack(spacing: 7) {
             ForEach(RoutePage.allCases) { page in
                 Circle()
-                    .fill(page == selectedPage ? page.activeDotColor : Color.white.opacity(0.3))
+                    .fill(page == selectedPage ? page.activeDotColor : RouteAppearance.pageDotInactive)
                     .frame(
                         width: page == selectedPage ? 6 : 5,
                         height: page == selectedPage ? 6 : 5
@@ -68,17 +64,21 @@ struct ActiveRoutePageDots: View {
 }
 
 struct ActiveRouteStatusBar: View {
+    let showActivityIcon: Bool
     let activityKind: ActivityKind
+    let isPaused: Bool
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 60)) { context in
-            HStack(spacing: 4) {
+        HStack(spacing: 4) {
+            if showActivityIcon {
                 Image(systemName: activityKind.systemImage)
                     .foregroundStyle(.green)
                     .font(.caption2)
-                Text(context.date, style: .time)
-                    .font(.caption2.monospacedDigit())
-                    .foregroundStyle(.white)
+            }
+            if isPaused {
+                Image(systemName: "pause.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
             }
         }
     }
@@ -90,76 +90,52 @@ struct ActiveRouteChrome<Content: View>: View {
 
     @Environment(WatchPreferences.self) private var preferences
 
-    let showFinishConfirm: Binding<Bool>
     @ViewBuilder let content: () -> Content
-
-    @State private var showActivityActions = false
 
     var body: some View {
         ZStack {
             content()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .ignoresSafeArea()
 
             VStack(spacing: 0) {
                 topBar
-                Spacer()
+                Spacer(minLength: 0)
                 if uiState.isMapFocus {
                     mapFocusDoneBar
                 }
                 ActiveRoutePageDots(selectedPage: uiState.selectedPage)
-                    .padding(.bottom, 6)
+                    .padding(.bottom, 4)
             }
-            .padding(.horizontal, 6)
-            .padding(.top, 2)
+            .padding(.horizontal, 4)
         }
-        .background(Color.black)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .routeScreenBackground()
         .toolbar(.hidden, for: .navigationBar)
-        .sheet(isPresented: $showActivityActions) {
-            activityActionsSheet
-        }
-    }
-
-    private var activityActionsSheet: some View {
-        NavigationStack {
-            List {
-                Button {
-                    showActivityActions = false
-                    viewModel.togglePauseResume(preferences: preferences)
-                } label: {
-                    Label(
-                        viewModel.isPaused ? "Resume" : "Pause",
-                        systemImage: viewModel.isPaused ? "play.fill" : "pause.fill"
-                    )
-                }
-
-                Button {
-                    showActivityActions = false
-                    showFinishConfirm.wrappedValue = true
-                } label: {
-                    Label("Finish Activity", systemImage: "flag.checkered")
-                }
-            }
-            .navigationTitle("Activity")
-        }
+        .toolbarBackground(.hidden, for: .navigationBar)
     }
 
     private var topBar: some View {
         HStack(alignment: .top) {
-            Button {
-                showActivityActions = true
-            } label: {
-                Image(systemName: "chevron.left")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 36, height: 36)
-                    .background(.black.opacity(0.55), in: Circle())
-            }
-            .buttonStyle(.plain)
+            ActiveRouteStatusBar(
+                showActivityIcon: !showsSystemWorkoutIndicator,
+                activityKind: viewModel.activityKind,
+                isPaused: viewModel.isPaused
+            )
+            .padding(.top, 2)
+            .padding(.leading, 2)
 
             Spacer()
+        }
+    }
 
-            ActiveRouteStatusBar(activityKind: viewModel.activityKind)
-                .padding(.top, 8)
-                .padding(.trailing, 2)
+    private var showsSystemWorkoutIndicator: Bool {
+        guard preferences.useHealthKitWorkouts else { return false }
+        switch viewModel.workoutService.status {
+        case .running, .paused:
+            return true
+        default:
+            return false
         }
     }
 
@@ -173,7 +149,7 @@ struct ActiveRouteChrome<Content: View>: View {
             .foregroundStyle(.blue)
             .padding(.horizontal, 10)
             .padding(.vertical, 5)
-            .background(.black.opacity(0.55), in: Capsule())
+            .background(RouteAppearance.overlayFill, in: Capsule())
         }
         .padding(.bottom, 4)
     }
@@ -185,35 +161,30 @@ struct OfflineStatusPill: View {
     var body: some View {
         Label(text, systemImage: "icloud.slash")
             .font(.caption2)
-            .foregroundStyle(.white)
+            .foregroundStyle(RouteAppearance.overlayText)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
-            .background(.black.opacity(0.65), in: Capsule())
+            .background(RouteAppearance.overlayFill, in: Capsule())
     }
 }
 
-struct RouteMetricCard: View {
-    let title: String
+struct RouteMetricInline: View {
+    let symbol: String
     let value: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title)
+        HStack(spacing: 4) {
+            Image(systemName: symbol)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
             Text(value)
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.white)
+                .foregroundStyle(RouteAppearance.overlayText)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .background(.black.opacity(0.65), in: RoundedRectangle(cornerRadius: 10))
-        .overlay {
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(.white.opacity(0.12), lineWidth: 0.5)
-        }
+        .padding(.vertical, 5)
+        .background(RouteAppearance.overlayFill, in: Capsule())
     }
 }

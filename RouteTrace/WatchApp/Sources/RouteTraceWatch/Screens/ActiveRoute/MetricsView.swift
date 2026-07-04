@@ -23,6 +23,8 @@ struct MetricsView: View {
                 .padding(.top, 28)
                 .padding(.bottom, 36)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .routeScreenBackground()
             .focusable(uiState.selectedPage == .metrics && !uiState.isMapFocus)
         }
     }

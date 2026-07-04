@@ -14,6 +14,7 @@ struct RouteLibraryView: View {
 
     @State private var isShowingImport = false
     @State private var errorMessage: String?
+    @State private var routePendingDelete: RouteEntity?
 
     var body: some View {
         NavigationStack {
@@ -33,6 +34,13 @@ struct RouteLibraryView: View {
                     List(routes) { route in
                         NavigationLink(value: route.id) {
                             RouteRowView(route: route)
+                        }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button(role: .destructive) {
+                                routePendingDelete = route
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
                         }
                     }
                 }
@@ -64,6 +72,34 @@ struct RouteLibraryView: View {
             } message: {
                 Text(errorMessage ?? "")
             }
+            .confirmationDialog(
+                "Delete this route?",
+                isPresented: Binding(
+                    get: { routePendingDelete != nil },
+                    set: { if !$0 { routePendingDelete = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("Delete Route", role: .destructive) {
+                    if let route = routePendingDelete {
+                        deleteRoute(route)
+                        routePendingDelete = nil
+                    }
+                }
+                Button("Cancel", role: .cancel) {
+                    routePendingDelete = nil
+                }
+            } message: {
+                Text("This removes the route and any offline map pack from your iPhone.")
+            }
+        }
+    }
+
+    private func deleteRoute(_ route: RouteEntity) {
+        do {
+            try routeStore.deleteRoute(route)
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 }

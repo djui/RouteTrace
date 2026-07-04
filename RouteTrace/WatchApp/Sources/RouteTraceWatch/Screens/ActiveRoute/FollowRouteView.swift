@@ -73,6 +73,6 @@ struct FollowRouteView: View {
         }
         .padding(.horizontal, 12)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.black)
+        .routeScreenBackground()
     }
 }

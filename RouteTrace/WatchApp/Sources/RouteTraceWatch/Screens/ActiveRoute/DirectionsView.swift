@@ -4,11 +4,12 @@ import SwiftUI
 struct DirectionsView: View {
     @Bindable var viewModel: ActiveRouteViewModel
     @Environment(\.isLuminanceReduced) private var isLuminanceReduced
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(spacing: 12) {
             if let snapshot = viewModel.navigationSnapshot, let cue = snapshot.nextCue {
-                Image(systemName: symbol(for: cue.kind))
+                Image(systemName: ActiveRouteMapOverlay.cueSymbol(for: cue.kind))
                     .font(.system(size: 36))
                     .foregroundStyle(snapshot.isOffRoute ? .orange : .primary)
 
@@ -57,21 +58,6 @@ struct DirectionsView: View {
         }
         .padding()
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(isLuminanceReduced ? Color.black : Color.black.opacity(0.2))
-    }
-
-    private func symbol(for kind: RouteCueKind) -> String {
-        switch kind {
-        case .start: "flag.fill"
-        case .finish: "flag.checkered"
-        case .continue: "arrow.up"
-        case .slightLeft: "arrow.up.left"
-        case .slightRight: "arrow.up.right"
-        case .turnLeft: "arrow.turn.up.left"
-        case .turnRight: "arrow.turn.up.right"
-        case .sharpLeft: "arrow.turn.left.up"
-        case .sharpRight: "arrow.turn.right.up"
-        case .uTurn: "arrow.uturn.up"
-        }
+        .background(isLuminanceReduced ? RouteAppearance.canvas(for: colorScheme) : RouteAppearance.dimmedOverlay(for: colorScheme))
     }
 }
