@@ -6,11 +6,11 @@ struct ActivitySummaryView: View {
 
     @Environment(WatchPreferences.self) private var preferences
     @Environment(WatchConnectivityManager.self) private var connectivity
-    @Environment(\.colorScheme) private var colorScheme
 
     @State private var isSaving = false
 
-    private static let saveBarClearance: CGFloat = 44
+    private static let contentHorizontalPadding: CGFloat = 16
+    private static let floatingSaveClearance: CGFloat = 40
 
     private var speedMode: SpeedDisplayMode {
         preferences.speedDisplayMode(for: viewModel.activityKind)
@@ -50,8 +50,14 @@ struct ActivitySummaryView: View {
                 }
                 .buttonStyle(.bordered)
             }
-            .padding()
-            .padding(.bottom, Self.saveBarClearance)
+            .padding(.horizontal, Self.contentHorizontalPadding)
+            .padding(.top, 16)
+            .padding(.bottom, Self.floatingSaveClearance)
+        }
+        .overlay(alignment: .bottom) {
+            saveButton
+                .padding(.horizontal, Self.contentHorizontalPadding)
+                .padding(.bottom, 4)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .navigationTitle("Finish")
@@ -66,12 +72,9 @@ struct ActivitySummaryView: View {
                 }
             }
         }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            saveBar
-        }
     }
 
-    private var saveBar: some View {
+    private var saveButton: some View {
         Button {
             Task {
                 isSaving = true
@@ -91,13 +94,6 @@ struct ActivitySummaryView: View {
         .buttonStyle(.borderedProminent)
         .tint(.green)
         .disabled(isSaving)
-        .padding(.horizontal)
-        .padding(.top, 4)
-        .padding(.bottom, 2)
-        .background {
-            RouteAppearance.canvas(for: colorScheme)
-                .ignoresSafeArea(edges: .bottom)
-        }
     }
 
     private var heartRateLabel: String {

@@ -57,6 +57,9 @@ enum RouteAppearance {
     static let routeOutlineWidth: CGFloat = 7
     static let routeStrokeWidth: CGFloat = 4.5
     static let routeOutlineColor = Color.black.opacity(0.55)
+
+    /// Extra inset beyond the system safe area for large watch corner radii.
+    static let watchDisplayInset: CGFloat = 6
 }
 
 extension View {

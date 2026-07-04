@@ -89,15 +89,16 @@ struct ActiveRouteChrome<Content: View>: View {
     @Bindable var viewModel: ActiveRouteViewModel
 
     @Environment(WatchPreferences.self) private var preferences
+    @Environment(\.isLuminanceReduced) private var isLuminanceReduced
 
     @ViewBuilder let content: () -> Content
 
     private var usesTransparentBackground: Bool {
-        uiState.selectedPage == .liveMap && !uiState.isMapFocus
+        uiState.selectedPage == .liveMap && !uiState.isMapFocus && !isLuminanceReduced
     }
 
     private var showsLiveMapBrowseChrome: Bool {
-        uiState.selectedPage == .liveMap && !uiState.isMapFocus
+        uiState.selectedPage == .liveMap && !uiState.isMapFocus && !isLuminanceReduced
     }
 
     var body: some View {
@@ -114,78 +115,52 @@ struct ActiveRouteChrome<Content: View>: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .ignoresSafeArea()
 
-            if uiState.isMapFocus {
-                focusOverlay
-            } else if showsLiveMapBrowseChrome {
+            if showsLiveMapBrowseChrome {
                 liveMapBrowseOverlays
-            } else {
+            } else if !uiState.isMapFocus && !isLuminanceReduced {
                 standardChromeOverlay
             }
         }
     }
 
-    private var focusOverlay: some View {
-        VStack(spacing: 0) {
-            HStack(alignment: .top) {
-                Button {
-                    uiState.exitMapFocus()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(RouteAppearance.overlayText.opacity(0.85))
-                        .padding(6)
-                        .background(RouteAppearance.overlayFill, in: Circle())
-                }
-                .buttonStyle(.plain)
-
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 4)
-            .safeAreaPadding(.top, 2)
-
-            Spacer(minLength: 0)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
     private var liveMapBrowseOverlays: some View {
-        ZStack {
-            Color.clear
-        }
-        .overlay(alignment: .topLeading) {
-            RouteDistanceBubble(
-                covered: RouteFormatting.distance(viewModel.navigationSnapshot?.progressDistanceMeters ?? 0),
-                remaining: RouteFormatting.distance(viewModel.navigationSnapshot?.distanceRemainingMeters ?? 0)
-            )
-            .padding(.leading, 4)
-        }
-        .overlay(alignment: .topTrailing) {
-            ActiveRouteStatusBar(
-                showActivityIcon: !showsSystemWorkoutIndicator,
-                activityKind: viewModel.activityKind,
-                isPaused: viewModel.isPaused
-            )
-            .padding(.trailing, 4)
-        }
-        .overlay(alignment: .bottom) {
-            VStack(spacing: 2) {
-                if let snapshot = viewModel.navigationSnapshot,
-                   let cue = snapshot.nextCue,
-                   let distance = snapshot.distanceToNextCueMeters,
-                   distance <= 500 {
-                    NavigationGuidanceBar(
-                        cue: cue,
-                        distanceMeters: distance,
-                        isOffRoute: snapshot.isOffRoute
-                    )
-                }
-
-                ActiveRoutePageDots(selectedPage: uiState.selectedPage)
+        Color.clear
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .overlay(alignment: .topLeading) {
+                RouteDistanceBubble(
+                    covered: RouteFormatting.distance(viewModel.navigationSnapshot?.progressDistanceMeters ?? 0),
+                    remaining: RouteFormatting.distance(viewModel.navigationSnapshot?.distanceRemainingMeters ?? 0)
+                )
+                .padding(.leading, 4)
+                .padding(.top, RouteAppearance.watchDisplayInset)
             }
-            .padding(.horizontal, 4)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .ignoresSafeArea(edges: .vertical)
+            .overlay(alignment: .topTrailing) {
+                ActiveRouteStatusBar(
+                    showActivityIcon: !showsSystemWorkoutIndicator,
+                    activityKind: viewModel.activityKind,
+                    isPaused: viewModel.isPaused
+                )
+                .padding(.trailing, 4)
+                .padding(.top, RouteAppearance.watchDisplayInset)
+            }
+            .overlay(alignment: .bottom) {
+                VStack(spacing: 2) {
+                    if let snapshot = viewModel.navigationSnapshot,
+                       let cue = snapshot.nextCue,
+                       let distance = snapshot.distanceToNextCueMeters,
+                       distance <= 500 {
+                        NavigationGuidanceBar(
+                            cue: cue,
+                            distanceMeters: distance,
+                            isOffRoute: snapshot.isOffRoute
+                        )
+                    }
+
+                    ActiveRoutePageDots(selectedPage: uiState.selectedPage)
+                }
+                .padding(.horizontal, 4)
+                .padding(.bottom, RouteAppearance.watchDisplayInset)
+            }
     }
 
     private var standardChromeOverlay: some View {

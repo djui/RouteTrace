@@ -18,7 +18,15 @@ struct OfflineMapView: View {
     @State private var loadError: String?
     @State private var localSpan: Double = 0.012
     @State private var tileScale: CGFloat = 1
-    @State private var panOffset: CGSize = .zero
+    @State private var panBaseOffset: CGSize = .zero
+    @State private var dragOffset: CGSize = .zero
+
+    private var totalPanOffset: CGSize {
+        CGSize(
+            width: panBaseOffset.width + dragOffset.width,
+            height: panBaseOffset.height + dragOffset.height
+        )
+    }
 
     private var isMapFocused: Bool {
         uiState?.isMapFocus == true
@@ -75,7 +83,7 @@ struct OfflineMapView: View {
             loadTiles()
         }
         .onChange(of: recenterToken) { _, _ in
-            panOffset = .zero
+            resetPanOffset()
             loadTiles()
         }
         .overlay(alignment: .bottom) {
@@ -94,8 +102,8 @@ struct OfflineMapView: View {
                     spanBinding,
                     from: 0.002,
                     through: 0.04,
-                    by: 0.001,
-                    sensitivity: .medium,
+                    by: 0.002,
+                    sensitivity: .low,
                     isContinuous: false,
                     isHapticFeedbackEnabled: isMapFocused
                 )
@@ -108,7 +116,7 @@ struct OfflineMapView: View {
     private var canvasLayer: some View {
         let canvas = Canvas { context, size in
             var transformed = context
-            transformed.translateBy(x: panOffset.width, y: panOffset.height)
+            transformed.translateBy(x: totalPanOffset.width, y: totalPanOffset.height)
             drawMap(context: &transformed, size: size)
         }
         .background(RouteAppearance.offlineMapCanvas(for: colorScheme))
@@ -118,10 +126,15 @@ struct OfflineMapView: View {
             canvas.gesture(
                 DragGesture()
                     .onChanged { value in
-                        panOffset = value.translation
+                        dragOffset = value.translation
                     }
                     .onEnded { value in
-                        snapPanAfterDrag(value.translation)
+                        let total = CGSize(
+                            width: panBaseOffset.width + value.translation.width,
+                            height: panBaseOffset.height + value.translation.height
+                        )
+                        commitPanAfterDrag(total)
+                        dragOffset = .zero
                     }
             )
         } else {
@@ -139,29 +152,34 @@ struct OfflineMapView: View {
             .padding(.top, 4)
     }
 
+    private func resetPanOffset() {
+        panBaseOffset = .zero
+        dragOffset = .zero
+    }
+
     private func handleLocationUpdate() {
         if !isMapFocused {
-            panOffset = .zero
+            resetPanOffset()
             loadTiles()
-        } else if panOffset == .zero {
+        } else if panBaseOffset == .zero && dragOffset == .zero {
             loadTiles()
         }
     }
 
-    private func snapPanAfterDrag(_ translation: CGSize) {
+    private func commitPanAfterDrag(_ total: CGSize) {
         let threshold: CGFloat = 128
         var dx = 0
         var dy = 0
 
-        if translation.width > threshold {
+        if total.width > threshold {
             dx = 1
-        } else if translation.width < -threshold {
+        } else if total.width < -threshold {
             dx = -1
         }
 
-        if translation.height > threshold {
+        if total.height > threshold {
             dy = 1
-        } else if translation.height < -threshold {
+        } else if total.height < -threshold {
             dy = -1
         }
 
@@ -171,10 +189,10 @@ struct OfflineMapView: View {
                 x: activeTile.x + dx,
                 y: activeTile.y + dy
             )
-            panOffset = .zero
+            resetPanOffset()
             loadTiles()
         } else {
-            panOffset = translation
+            panBaseOffset = total
         }
     }
 

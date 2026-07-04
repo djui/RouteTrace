@@ -45,7 +45,7 @@ struct ActiveRouteDimmedSummary: View {
       }
 
       HStack {
-        Text(RouteFormatting.distance(viewModel.navigationSnapshot?.distanceRemainingMeters ?? 0))
+        Text(routeDistanceSummary)
         Spacer()
         Text(RouteFormatting.duration(viewModel.elapsedSeconds))
       }
@@ -65,6 +65,18 @@ struct ActiveRouteDimmedSummary: View {
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .padding()
     .routeScreenBackground()
+  }
+
+  private var routeDistanceSummary: String {
+    if let snapshot = viewModel.navigationSnapshot {
+      let covered = snapshot.progressDistanceMeters
+      let total = covered + snapshot.distanceRemainingMeters
+      if total > 0 {
+        return "\(RouteFormatting.distance(covered)) / \(RouteFormatting.distance(total))"
+      }
+      return RouteFormatting.distance(covered)
+    }
+    return RouteFormatting.distance(viewModel.recording.totalDistanceMeters)
   }
 
   private func symbol(for kind: RouteCueKind) -> String {

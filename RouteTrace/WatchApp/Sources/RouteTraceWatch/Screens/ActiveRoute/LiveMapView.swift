@@ -13,7 +13,11 @@ struct LiveMapView: View {
     @State private var offlineRecenterToken = 0
 
     private var isFocused: Bool {
-        uiState.isMapFocus && uiState.selectedPage == .liveMap
+        uiState.isMapFocus
+    }
+
+    private var crownEnabled: Bool {
+        uiState.isMapFocus || uiState.selectedPage == .liveMap
     }
 
     private var usesOfflineTiles: Bool {
@@ -23,23 +27,7 @@ struct LiveMapView: View {
     }
 
     var body: some View {
-        Group {
-            if isFocused {
-                mapContent
-                    .focusable(true)
-                    .digitalCrownRotation(
-                        $uiState.mapSpan,
-                        from: 0.002,
-                        through: 0.04,
-                        by: 0.001,
-                        sensitivity: .medium,
-                        isContinuous: false,
-                        isHapticFeedbackEnabled: true
-                    )
-            } else {
-                mapContent
-            }
-        }
+        mapContent
         .onChange(of: viewModel.navigationSnapshot?.currentCoordinate?.latitude) { _, _ in
             followLocationIfNeeded()
         }
@@ -61,17 +49,7 @@ struct LiveMapView: View {
     private var mapContent: some View {
         AlwaysOnAware {
             ZStack {
-                if usesOfflineTiles {
-                    OfflineMapView(
-                        viewModel: viewModel,
-                        uiState: uiState,
-                        showChrome: false,
-                        allowsHitTesting: isFocused,
-                        recenterToken: offlineRecenterToken
-                    )
-                } else {
-                    mapLayer
-                }
+                mapSurface
 
                 if !isFocused {
                     Color.clear
@@ -81,11 +59,67 @@ struct LiveMapView: View {
                         }
                         .allowsHitTesting(true)
                 }
+
+                if isFocused {
+                    mapFocusExitButton
+                }
             }
         } dimmed: {
             ActiveRouteDimmedSummary(viewModel: viewModel)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    @ViewBuilder
+    private var mapSurface: some View {
+        Group {
+            if usesOfflineTiles {
+                OfflineMapView(
+                    viewModel: viewModel,
+                    uiState: uiState,
+                    showChrome: false,
+                    allowsHitTesting: isFocused,
+                    recenterToken: offlineRecenterToken
+                )
+            } else {
+                mapLayer
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .modifier(MapCrownInteraction(
+            isEnabled: crownEnabled,
+            hapticFeedback: isFocused,
+            mapSpan: $uiState.mapSpan
+        ))
+    }
+
+    private var mapFocusExitButton: some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .top) {
+                Button {
+                    uiState.exitMapFocus()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(RouteAppearance.overlayText.opacity(0.85))
+                        .padding(8)
+                        .background(RouteAppearance.overlayFill, in: Circle())
+                }
+                .buttonStyle(.plain)
+                .frame(minWidth: 36, minHeight: 36)
+                .contentShape(Circle())
+
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 4)
+            .padding(.top, RouteAppearance.watchDisplayInset)
+
+            Spacer(minLength: 0)
+                .allowsHitTesting(false)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .allowsHitTesting(true)
+        .zIndex(10)
     }
 
     private var mapLayer: some View {
@@ -164,6 +198,30 @@ struct LiveMapView: View {
                     span: MKCoordinateSpan(latitudeDelta: uiState.mapSpan, longitudeDelta: uiState.mapSpan)
                 )
             )
+        }
+    }
+}
+
+private struct MapCrownInteraction: ViewModifier {
+    let isEnabled: Bool
+    let hapticFeedback: Bool
+    @Binding var mapSpan: Double
+
+    func body(content: Content) -> some View {
+        if isEnabled {
+            content
+                .focusable(true)
+                .digitalCrownRotation(
+                    $mapSpan,
+                    from: 0.002,
+                    through: 0.04,
+                    by: 0.002,
+                    sensitivity: .low,
+                    isContinuous: false,
+                    isHapticFeedbackEnabled: hapticFeedback
+                )
+        } else {
+            content
         }
     }
 }
