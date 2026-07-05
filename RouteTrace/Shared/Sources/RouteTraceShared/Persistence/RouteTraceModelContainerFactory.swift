@@ -2,23 +2,23 @@ import Foundation
 import os
 import SwiftData
 
-enum RouteTraceSchema {
-    static let models: [any PersistentModel.Type] = [
+public enum RouteTraceSchema {
+    public static let models: [any PersistentModel.Type] = [
         RouteEntity.self,
         ActivityEntity.self,
         AppSettingsEntity.self
     ]
 }
 
-enum RouteTraceCloudConstants {
-    static let containerIdentifier = "iCloud.com.uwe.RouteTrace"
-    static let storeName = "RouteTraceCloud"
+public enum RouteTraceCloudConstants {
+    public static let containerIdentifier = "iCloud.com.uwe.RouteTrace"
+    public static let storeName = "RouteTraceCloud"
 }
 
-enum RouteTraceModelContainerFactory {
+public enum RouteTraceModelContainerFactory {
     private static let logger = Logger(subsystem: "com.uwe.RouteTrace", category: "ModelContainer")
 
-    static func make() -> ModelContainer {
+    public static func make() -> ModelContainer {
         let schema = Schema(RouteTraceSchema.models)
 
         let cloudConfiguration = ModelConfiguration(

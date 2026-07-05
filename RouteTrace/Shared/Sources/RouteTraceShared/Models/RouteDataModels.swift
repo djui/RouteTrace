@@ -1,30 +1,29 @@
 import Foundation
 import SwiftData
-import RouteTraceShared
 
 @Model
-final class RouteEntity {
-    var id: UUID = UUID()
-    var name: String = ""
-    var sourceFileName: String = ""
-    var importedAt: Date = Date()
-    var activityHintRaw: String = ActivityKind.running.rawValue
-    var distanceMeters: Double = 0
-    var elevationGainMeters: Double?
-    var elevationLossMeters: Double?
-    var minLatitude: Double = 0
-    var maxLatitude: Double = 0
-    var minLongitude: Double = 0
-    var maxLongitude: Double = 0
-    var originalPointCount: Int = 0
-    var simplifiedPointCount: Int = 0
-    var transferStateRaw: String = TransferState.notSent.rawValue
-    var offlineStatusRaw: String = OfflinePackStatus.missing.rawValue
-    var offlineTileCount: Int = 0
-    var offlinePackSizeBytes: Int64 = 0
-    @Attribute(.externalStorage) var routePackageData: Data = Data()
+public final class RouteEntity {
+    public var id: UUID = UUID()
+    public var name: String = ""
+    public var sourceFileName: String = ""
+    public var importedAt: Date = Date()
+    public var activityHintRaw: String = ActivityKind.running.rawValue
+    public var distanceMeters: Double = 0
+    public var elevationGainMeters: Double?
+    public var elevationLossMeters: Double?
+    public var minLatitude: Double = 0
+    public var maxLatitude: Double = 0
+    public var minLongitude: Double = 0
+    public var maxLongitude: Double = 0
+    public var originalPointCount: Int = 0
+    public var simplifiedPointCount: Int = 0
+    public var transferStateRaw: String = TransferState.notSent.rawValue
+    public var offlineStatusRaw: String = OfflinePackStatus.missing.rawValue
+    public var offlineTileCount: Int = 0
+    public var offlinePackSizeBytes: Int64 = 0
+    @Attribute(.externalStorage) public var routePackageData: Data = Data()
 
-    init(
+    public init(
         id: UUID = UUID(),
         name: String,
         sourceFileName: String,
@@ -63,22 +62,22 @@ final class RouteEntity {
         self.routePackageData = routePackageData
     }
 
-    var activityHint: ActivityKind {
+    public var activityHint: ActivityKind {
         get { ActivityKind(rawValue: activityHintRaw) ?? .running }
         set { activityHintRaw = newValue.rawValue }
     }
 
-    var transferState: TransferState {
+    public var transferState: TransferState {
         get { TransferState(rawValue: transferStateRaw) ?? .notSent }
         set { transferStateRaw = newValue.rawValue }
     }
 
-    var offlineStatus: OfflinePackStatus {
+    public var offlineStatus: OfflinePackStatus {
         get { OfflinePackStatus(rawValue: offlineStatusRaw) ?? .missing }
         set { offlineStatusRaw = newValue.rawValue }
     }
 
-    var boundingBox: GeoBoundingBox {
+    public var boundingBox: GeoBoundingBox {
         GeoBoundingBox(
             minLatitude: minLatitude,
             maxLatitude: maxLatitude,
@@ -87,11 +86,11 @@ final class RouteEntity {
         )
     }
 
-    var routeDirectoryURL: URL {
+    public var routeDirectoryURL: URL {
         RouteTracePaths.routeDirectory(for: id)
     }
 
-    func apply(_ package: RoutePackage) {
+    public func apply(_ package: RoutePackage) {
         name = package.name
         sourceFileName = package.sourceFileName
         importedAt = package.importedAt
@@ -111,12 +110,12 @@ final class RouteEntity {
         routePackageData = (try? RouteTracePayloadCoding.encode(package)) ?? routePackageData
     }
 
-    func decodedPackage() throws -> RoutePackage? {
+    public func decodedPackage() throws -> RoutePackage? {
         guard !routePackageData.isEmpty else { return nil }
         return try RouteTracePayloadCoding.decode(RoutePackage.self, from: routePackageData)
     }
 
-    static func from(_ package: RoutePackage) -> RouteEntity {
+    public static func from(_ package: RoutePackage) -> RouteEntity {
         RouteEntity(
             id: package.id,
             name: package.name,
@@ -138,24 +137,24 @@ final class RouteEntity {
 }
 
 @Model
-final class ActivityEntity {
-    var id: UUID = UUID()
-    var routeId: UUID = UUID()
-    var routeName: String = ""
-    var title: String?
-    var startedAt: Date = Date()
-    var endedAt: Date?
-    var activityKindRaw: String = ActivityKind.running.rawValue
-    var totalDistanceMeters: Double = 0
-    var elapsedSeconds: Double = 0
-    var elevationGainMeters: Double?
-    var averageHeartRateBPM: Double?
-    var trackPointsData: Data = Data()
-    var offRouteEventsData: Data = Data()
-    @Attribute(.externalStorage) var activityPayloadData: Data = Data()
-    var syncedAt: Date = Date()
+public final class ActivityEntity {
+    public var id: UUID = UUID()
+    public var routeId: UUID = UUID()
+    public var routeName: String = ""
+    public var title: String?
+    public var startedAt: Date = Date()
+    public var endedAt: Date?
+    public var activityKindRaw: String = ActivityKind.running.rawValue
+    public var totalDistanceMeters: Double = 0
+    public var elapsedSeconds: Double = 0
+    public var elevationGainMeters: Double?
+    public var averageHeartRateBPM: Double?
+    public var trackPointsData: Data = Data()
+    public var offRouteEventsData: Data = Data()
+    @Attribute(.externalStorage) public var activityPayloadData: Data = Data()
+    public var syncedAt: Date = Date()
 
-    init(
+    public init(
         id: UUID = UUID(),
         routeId: UUID,
         routeName: String,
@@ -202,33 +201,33 @@ final class ActivityEntity {
         ))) ?? Data()
     }
 
-    var activityKind: ActivityKind {
+    public var activityKind: ActivityKind {
         get { ActivityKind(rawValue: activityKindRaw) ?? .running }
         set { activityKindRaw = newValue.rawValue }
     }
 
-    var trackPoints: [TrackPoint] {
+    public var trackPoints: [TrackPoint] {
         get { (try? RouteTracePayloadCoding.decode([TrackPoint].self, from: trackPointsData)) ?? [] }
         set { trackPointsData = (try? RouteTracePayloadCoding.encode(newValue)) ?? Data() }
     }
 
-    var offRouteEvents: [OffRouteEvent] {
+    public var offRouteEvents: [OffRouteEvent] {
         get { (try? RouteTracePayloadCoding.decode([OffRouteEvent].self, from: offRouteEventsData)) ?? [] }
         set { offRouteEventsData = (try? RouteTracePayloadCoding.encode(newValue)) ?? Data() }
     }
 
-    func decodedRecording() throws -> ActivityRecording? {
+    public func decodedRecording() throws -> ActivityRecording? {
         if !activityPayloadData.isEmpty {
             return try RouteTracePayloadCoding.decode(ActivityRecording.self, from: activityPayloadData)
         }
         return recording
     }
 
-    var displayTitle: String {
+    public var displayTitle: String {
         title ?? routeName
     }
 
-    var recording: ActivityRecording {
+    public var recording: ActivityRecording {
         ActivityRecording(
             id: id,
             routeId: routeId,
@@ -246,7 +245,7 @@ final class ActivityEntity {
         )
     }
 
-    static func from(_ recording: ActivityRecording) -> ActivityEntity {
+    public static func from(_ recording: ActivityRecording) -> ActivityEntity {
         ActivityEntity(
             id: recording.id,
             routeId: recording.routeId,
@@ -266,14 +265,14 @@ final class ActivityEntity {
 }
 
 @Model
-final class AppSettingsEntity {
-    var id: UUID = UUID()
-    var defaultActivityKindRaw: String = ActivityKind.running.rawValue
-    var batteryModeRaw: String = BatteryMode.normal.rawValue
-    var mapDisplayModeRaw: String = MapDisplayMode.onlineNative.rawValue
-    var buildOfflinePacksByDefault: Bool = false
+public final class AppSettingsEntity {
+    public var id: UUID = UUID()
+    public var defaultActivityKindRaw: String = ActivityKind.running.rawValue
+    public var batteryModeRaw: String = BatteryMode.normal.rawValue
+    public var mapDisplayModeRaw: String = MapDisplayMode.onlineNative.rawValue
+    public var buildOfflinePacksByDefault: Bool = false
 
-    init(
+    public init(
         id: UUID = UUID(),
         defaultActivityKind: ActivityKind = .running,
         batteryMode: BatteryMode = .normal,
@@ -287,48 +286,48 @@ final class AppSettingsEntity {
         self.buildOfflinePacksByDefault = buildOfflinePacksByDefault
     }
 
-    var defaultActivityKind: ActivityKind {
+    public var defaultActivityKind: ActivityKind {
         get { ActivityKind(rawValue: defaultActivityKindRaw) ?? .running }
         set { defaultActivityKindRaw = newValue.rawValue }
     }
 
-    var batteryMode: BatteryMode {
+    public var batteryMode: BatteryMode {
         get { BatteryMode(rawValue: batteryModeRaw) ?? .normal }
         set { batteryModeRaw = newValue.rawValue }
     }
 
-    var mapDisplayMode: MapDisplayMode {
+    public var mapDisplayMode: MapDisplayMode {
         get { MapDisplayMode(rawValue: mapDisplayModeRaw) ?? .onlineNative }
         set { mapDisplayModeRaw = newValue.rawValue }
     }
 }
 
-enum RouteTracePaths {
-    static var documentsDirectory: URL {
+public enum RouteTracePaths {
+    public static var documentsDirectory: URL {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
     }
 
-    static var routesRoot: URL {
+    public static var routesRoot: URL {
         documentsDirectory.appendingPathComponent("Routes", isDirectory: true)
     }
 
-    static var activitiesRoot: URL {
+    public static var activitiesRoot: URL {
         documentsDirectory.appendingPathComponent("Activities", isDirectory: true)
     }
 
-    static func routeDirectory(for routeID: UUID) -> URL {
+    public static func routeDirectory(for routeID: UUID) -> URL {
         routesRoot.appendingPathComponent(routeID.uuidString, isDirectory: true)
     }
 
-    static func sourceGPXURL(for routeID: UUID) -> URL {
+    public static func sourceGPXURL(for routeID: UUID) -> URL {
         routeDirectory(for: routeID).appendingPathComponent("source.gpx")
     }
 
-    static func hasSourceGPX(for routeID: UUID) -> Bool {
+    public static func hasSourceGPX(for routeID: UUID) -> Bool {
         FileManager.default.fileExists(atPath: sourceGPXURL(for: routeID).path)
     }
 
-    static func ensureDirectoriesExist() throws {
+    public static func ensureDirectoriesExist() throws {
         try FileManager.default.createDirectory(at: routesRoot, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: activitiesRoot, withIntermediateDirectories: true)
     }

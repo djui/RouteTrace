@@ -7,6 +7,9 @@ struct ActivityListView: View {
     @Query(sort: \ActivityEntity.startedAt, order: .reverse) private var activities: [ActivityEntity]
 
     @State private var errorMessage: String?
+    @State private var activityPendingRename: ActivityEntity?
+    @State private var editedActivityTitle = ""
+    @State private var isRenaming = false
     @State private var exportURL: URL?
     @State private var isSharePresented = false
 
@@ -23,6 +26,10 @@ struct ActivityListView: View {
                     List(activities) { activity in
                         ActivityListRow(
                             activity: activity,
+                            onRename: { activity in
+                                editedActivityTitle = activity.displayTitle
+                                activityPendingRename = activity
+                            },
                             onShare: { shareActivity($0) },
                             onDelete: { deleteActivity($0) }
                         )
@@ -49,6 +56,24 @@ struct ActivityListView: View {
             } message: {
                 Text(errorMessage ?? "")
             }
+            .alert("Rename Activity", isPresented: Binding(
+                get: { activityPendingRename != nil },
+                set: { if !$0 { activityPendingRename = nil } }
+            )) {
+                TextField("Activity Name", text: $editedActivityTitle)
+                    .textInputAutocapitalization(.words)
+                Button("Save") {
+                    if let activity = activityPendingRename {
+                        Task { await renameActivity(activity) }
+                    }
+                }
+                .disabled(editedActivityTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isRenaming)
+                Button("Cancel", role: .cancel) {
+                    activityPendingRename = nil
+                }
+            } message: {
+                Text("Choose a name for this activity.")
+            }
         }
     }
 
@@ -72,10 +97,24 @@ struct ActivityListView: View {
             errorMessage = error.localizedDescription
         }
     }
+
+    @MainActor
+    private func renameActivity(_ activity: ActivityEntity) async {
+        isRenaming = true
+        defer { isRenaming = false }
+
+        do {
+            _ = try routeStore.renameActivity(for: activity, to: editedActivityTitle)
+            activityPendingRename = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
 }
 
 private struct ActivityListRow: View {
     let activity: ActivityEntity
+    let onRename: (ActivityEntity) -> Void
     let onShare: (ActivityEntity) -> Void
     let onDelete: (ActivityEntity) -> Void
 
@@ -86,6 +125,12 @@ private struct ActivityListRow: View {
             ActivityRowView(activity: activity)
         }
         .contextMenu {
+            Button {
+                onRename(activity)
+            } label: {
+                Label("Rename", systemImage: "pencil")
+            }
+
             Button {
                 onShare(activity)
             } label: {

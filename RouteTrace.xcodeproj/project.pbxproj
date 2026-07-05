@@ -34,7 +34,7 @@
 		38fcc0f2dec8ccd2e0eb0d1c /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Controls/RouteTraceControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3ab0153e1e05969fd13a06ae /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Controls/RouteTraceControls.swift */; };
 		390e345267a8a1135edda8cf /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Screens/ActiveRoute/LiveMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38e09204559820c7a0bd9c1b /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Screens/ActiveRoute/LiveMapView.swift */; };
 		3971203d66ea5725fd2535e7 /* RouteTraceWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 310627d690813b27e020ce0b /* RouteTraceWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
-		39b569cb90fa97a624d1c70b /* RouteTrace/iOSApp/Sources/RouteTrace/Services/RouteTraceModelContainerFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 339d92ec7cda770a032a2525 /* RouteTrace/iOSApp/Sources/RouteTrace/Services/RouteTraceModelContainerFactory.swift */; };
+		39b569cb90fa97a624d1c70b /* RouteTrace/iOSApp/Sources/RouteTrace/Services/RouteWatchAutoTransfer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 339d92ec7cda770a032a2525 /* RouteTrace/iOSApp/Sources/RouteTrace/Services/RouteWatchAutoTransfer.swift */; };
 		39bb9a3563c5b73f1e1f3e66 /* RouteTrace/WatchApp/Sources/RouteTraceWatch/ViewModels/ActiveRouteViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3ed694a0018f06dbc122c54a /* RouteTrace/WatchApp/Sources/RouteTraceWatch/ViewModels/ActiveRouteViewModel.swift */; };
 		39cd75628de21321e45d50b2 /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Services/WatchConnectivityManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33300f8a660ccc70692b57d9 /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Services/WatchConnectivityManager.swift */; };
 		39d72e71f8eb8eb3f52c7f14 /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Services/LocationTrackingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3fbfef3963e42b534cb076a1 /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Services/LocationTrackingService.swift */; };
@@ -53,7 +53,8 @@
 		3b8ea933bafbcf276c8ddfc9 /* RouteTrace/iOSApp/Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 3f01ddc37dd202381f16f512 /* RouteTrace/iOSApp/Assets.xcassets */; };
 		3bc7c6fa2d9d3637b2e4b773 /* RouteTrace/iOSApp/Sources/RouteTrace/Components/ShareSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34f44238e7f9fc67bd2e9ded /* RouteTrace/iOSApp/Sources/RouteTrace/Components/ShareSheet.swift */; };
 		3ceae0777e2d0f0ff1f1ca50 /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Screens/ActiveRoute/DirectionsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3a34fa45d0d346bd36ddd6f7 /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Screens/ActiveRoute/DirectionsView.swift */; };
-		3d63937366b55eb5af5f20fc /* RouteTrace/iOSApp/Sources/RouteTrace/Models/RouteDataModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 367fb346f20846f9a11d9725 /* RouteTrace/iOSApp/Sources/RouteTrace/Models/RouteDataModels.swift */; };
+		3d63937366b55eb5af5f20fc /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Components/CloudRouteSyncView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 367fb346f20846f9a11d9725 /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Components/CloudRouteSyncView.swift */; };
+		6d63937366b55eb5af5f20fc /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Services/WatchCloudRouteSyncService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 667fb346f20846f9a11d9725 /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Services/WatchCloudRouteSyncService.swift */; };
 		3d9c1b9fe82ec20139b0247a /* RouteTrace/iOSApp/Sources/RouteTrace/Components/RouteMapPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33d23e167919a0005bfc9860 /* RouteTrace/iOSApp/Sources/RouteTrace/Components/RouteMapPreview.swift */; };
 		3f2e814e74827f6ff7557426 /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Screens/RouteDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3853a34fc3665829e6f669af /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Screens/RouteDetailView.swift */; };
 		3f2eff0f90c77a35b1120ad3 /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Screens/ActiveRoute/FollowRouteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 327864227a36b8a73bc5b716 /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Screens/ActiveRoute/FollowRouteView.swift */; };
@@ -132,7 +133,7 @@
 		33300f8a660ccc70692b57d9 /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Services/WatchConnectivityManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteTrace/WatchApp/Sources/RouteTraceWatch/Services/WatchConnectivityManager.swift; sourceTree = "<group>"; };
 		3363ac31dae6a63b77f3390a /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Screens/ActiveRoute/RouteMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteTrace/WatchApp/Sources/RouteTraceWatch/Screens/ActiveRoute/RouteMapView.swift; sourceTree = "<group>"; };
 		337b205ac0bcfa11ca77c398 /* RouteTrace/iOSApp/Sources/RouteTrace/Screens/ImportRouteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteTrace/iOSApp/Sources/RouteTrace/Screens/ImportRouteView.swift; sourceTree = "<group>"; };
-		339d92ec7cda770a032a2525 /* RouteTrace/iOSApp/Sources/RouteTrace/Services/RouteTraceModelContainerFactory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteTrace/iOSApp/Sources/RouteTrace/Services/RouteTraceModelContainerFactory.swift; sourceTree = "<group>"; };
+		339d92ec7cda770a032a2525 /* RouteTrace/iOSApp/Sources/RouteTrace/Services/RouteWatchAutoTransfer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteTrace/iOSApp/Sources/RouteTrace/Services/RouteWatchAutoTransfer.swift; sourceTree = "<group>"; };
 		33b402aaa67bb0fae1667e11 /* RouteTrace/WatchApp/RouteTraceWatch.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = RouteTrace/WatchApp/RouteTraceWatch.entitlements; sourceTree = "<group>"; };
 		33bb5aed1c75de63ff528ef2 /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Services/RouteNotificationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteTrace/WatchApp/Sources/RouteTraceWatch/Services/RouteNotificationService.swift; sourceTree = "<group>"; };
 		33d23e167919a0005bfc9860 /* RouteTrace/iOSApp/Sources/RouteTrace/Components/RouteMapPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteTrace/iOSApp/Sources/RouteTrace/Components/RouteMapPreview.swift; sourceTree = "<group>"; };
@@ -153,7 +154,8 @@
 		358cc5e9864928d8b251bc46 /* RouteTraceTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RouteTraceTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		35931d9eb1090f5940f0663e /* RouteTrace/iOSApp/Sources/RouteTrace/Services/PhoneConnectivityManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteTrace/iOSApp/Sources/RouteTrace/Services/PhoneConnectivityManager.swift; sourceTree = "<group>"; };
 		360f70c4089adb5b3559b2a1 /* RouteTrace/Tests/RouteTraceSharedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteTrace/Tests/RouteTraceSharedTests.swift; sourceTree = "<group>"; };
-		367fb346f20846f9a11d9725 /* RouteTrace/iOSApp/Sources/RouteTrace/Models/RouteDataModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteTrace/iOSApp/Sources/RouteTrace/Models/RouteDataModels.swift; sourceTree = "<group>"; };
+		367fb346f20846f9a11d9725 /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Components/CloudRouteSyncView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteTrace/WatchApp/Sources/RouteTraceWatch/Components/CloudRouteSyncView.swift; sourceTree = "<group>"; };
+		667fb346f20846f9a11d9725 /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Services/WatchCloudRouteSyncService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteTrace/WatchApp/Sources/RouteTraceWatch/Services/WatchCloudRouteSyncService.swift; sourceTree = "<group>"; };
 		36bb5c1360e5174ecce46907 /* RouteTrace/iOSApp/Sources/RouteTrace/Screens/RouteLibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteTrace/iOSApp/Sources/RouteTrace/Screens/RouteLibraryView.swift; sourceTree = "<group>"; };
 		3709be3b47196ffbb4314a36 /* RouteTrace/iOSApp/RouteTrace.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = RouteTrace/iOSApp/RouteTrace.entitlements; sourceTree = "<group>"; };
 		377d0f916145f93d60de1547 /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Screens/ActiveRoute/OfflineMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteTrace/WatchApp/Sources/RouteTraceWatch/Screens/ActiveRoute/OfflineMapView.swift; sourceTree = "<group>"; };
@@ -248,7 +250,6 @@
 				5a1c0e1a2b3d4e5f60123405 /* RouteTrace/iOSApp/Sources/RouteTrace/Components/RouteShapeThumbnail.swift */,
 				34f44238e7f9fc67bd2e9ded /* RouteTrace/iOSApp/Sources/RouteTrace/Components/ShareSheet.swift */,
 				5a1c0e1a2b3d4e5f60123407 /* RouteTrace/iOSApp/Sources/RouteTrace/Helpers/RouteActions.swift */,
-				367fb346f20846f9a11d9725 /* RouteTrace/iOSApp/Sources/RouteTrace/Models/RouteDataModels.swift */,
 				3ab40dc3b7c17e131eb4e81c /* RouteTrace/iOSApp/Sources/RouteTrace/RouteTraceApp.swift */,
 				3970437b491c92af8c34d368 /* RouteTrace/iOSApp/Sources/RouteTrace/Screens/ActivityListView.swift */,
 				31763280e30c492e1922bd13 /* RouteTrace/iOSApp/Sources/RouteTrace/Screens/ActivityResultView.swift */,
@@ -260,7 +261,7 @@
 				35931d9eb1090f5940f0663e /* RouteTrace/iOSApp/Sources/RouteTrace/Services/PhoneConnectivityManager.swift */,
 				3785807942b74267c415d93b /* RouteTrace/iOSApp/Sources/RouteTrace/Services/RouteImportService.swift */,
 				37ccd29e43a252e783246a8a /* RouteTrace/iOSApp/Sources/RouteTrace/Services/RouteStore.swift */,
-				339d92ec7cda770a032a2525 /* RouteTrace/iOSApp/Sources/RouteTrace/Services/RouteTraceModelContainerFactory.swift */,
+				339d92ec7cda770a032a2525 /* RouteTrace/iOSApp/Sources/RouteTrace/Services/RouteWatchAutoTransfer.swift */,
 				311700f9022f22573ffde8c0 /* RouteTrace/iOSApp/Info.plist */,
 				3709be3b47196ffbb4314a36 /* RouteTrace/iOSApp/RouteTrace.entitlements */,
 				3f01ddc37dd202381f16f512 /* RouteTrace/iOSApp/Assets.xcassets */,
@@ -309,6 +310,7 @@
 				4b2c0e1a2b3d4e5f60123456 /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Components/RouteShapeThumbnail.swift */,
 				4c2c0e1a2b3d4e5f60123456 /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Components/RoutePreviewMap.swift */,
 				34cf5d499bd02064db643aee /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Components/ActiveRouteMapOverlay.swift */,
+				367fb346f20846f9a11d9725 /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Components/CloudRouteSyncView.swift */,
 				346533a09f3c85aa78e116ba /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Components/AlwaysOnDisplay.swift */,
 				3ab0153e1e05969fd13a06ae /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Controls/RouteTraceControls.swift */,
 				34cb44ed65721c414b38e27d /* RouteTrace/WatchApp/Sources/RouteTraceWatch/RouteTraceWatchApp.swift */,
@@ -333,6 +335,7 @@
 				3fbfef3963e42b534cb076a1 /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Services/LocationTrackingService.swift */,
 				33bb5aed1c75de63ff528ef2 /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Services/RouteNotificationService.swift */,
 				33300f8a660ccc70692b57d9 /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Services/WatchConnectivityManager.swift */,
+				667fb346f20846f9a11d9725 /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Services/WatchCloudRouteSyncService.swift */,
 				3b12d16838f483b823466610 /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Services/WatchRouteStore.swift */,
 				5d2c0e1a2b3d4e5f60123459 /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Services/WatchActivityStore.swift */,
 				3506cbb110f560b7cd3f7788 /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Services/WorkoutService.swift */,
@@ -533,7 +536,6 @@
 				5a1c0e1a2b3d4e5f60123406 /* RouteTrace/iOSApp/Sources/RouteTrace/Components/RouteShapeThumbnail.swift in Sources */,
 				3bc7c6fa2d9d3637b2e4b773 /* RouteTrace/iOSApp/Sources/RouteTrace/Components/ShareSheet.swift in Sources */,
 				5a1c0e1a2b3d4e5f60123408 /* RouteTrace/iOSApp/Sources/RouteTrace/Helpers/RouteActions.swift in Sources */,
-				3d63937366b55eb5af5f20fc /* RouteTrace/iOSApp/Sources/RouteTrace/Models/RouteDataModels.swift in Sources */,
 				322afb8d38a48676dda8750e /* RouteTrace/iOSApp/Sources/RouteTrace/RouteTraceApp.swift in Sources */,
 				3ad95fffd92e5c8f51cb9965 /* RouteTrace/iOSApp/Sources/RouteTrace/Screens/ActivityListView.swift in Sources */,
 				3a422782dba81282b595a430 /* RouteTrace/iOSApp/Sources/RouteTrace/Screens/ActivityResultView.swift in Sources */,
@@ -545,7 +547,7 @@
 				35571b5a45dbe2f5ca8f8228 /* RouteTrace/iOSApp/Sources/RouteTrace/Services/PhoneConnectivityManager.swift in Sources */,
 				3ad5af199585b875bdedc536 /* RouteTrace/iOSApp/Sources/RouteTrace/Services/RouteImportService.swift in Sources */,
 				3a8af8abde16766cdf7587a9 /* RouteTrace/iOSApp/Sources/RouteTrace/Services/RouteStore.swift in Sources */,
-				39b569cb90fa97a624d1c70b /* RouteTrace/iOSApp/Sources/RouteTrace/Services/RouteTraceModelContainerFactory.swift in Sources */,
+				39b569cb90fa97a624d1c70b /* RouteTrace/iOSApp/Sources/RouteTrace/Services/RouteWatchAutoTransfer.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -566,6 +568,7 @@
 				4b2c0e1a2b3d4e5f60123457 /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Components/RouteShapeThumbnail.swift in Sources */,
 				4c2c0e1a2b3d4e5f60123457 /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Components/RoutePreviewMap.swift in Sources */,
 				366326f90a2d02c75f2acde6 /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Components/ActiveRouteMapOverlay.swift in Sources */,
+				3d63937366b55eb5af5f20fc /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Components/CloudRouteSyncView.swift in Sources */,
 				33c88159bf8ce19ad7da7824 /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Components/AlwaysOnDisplay.swift in Sources */,
 				38fcc0f2dec8ccd2e0eb0d1c /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Controls/RouteTraceControls.swift in Sources */,
 				3ae387b0b9ee4855c2f4d352 /* RouteTrace/WatchApp/Sources/RouteTraceWatch/RouteTraceWatchApp.swift in Sources */,
@@ -590,6 +593,7 @@
 				39d72e71f8eb8eb3f52c7f14 /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Services/LocationTrackingService.swift in Sources */,
 				3a1f9d4f8d5ca3f04b368a2f /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Services/RouteNotificationService.swift in Sources */,
 				39cd75628de21321e45d50b2 /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Services/WatchConnectivityManager.swift in Sources */,
+				6d63937366b55eb5af5f20fc /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Services/WatchCloudRouteSyncService.swift in Sources */,
 				3f9eaf40ff8f6d41d7b141c0 /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Services/WatchRouteStore.swift in Sources */,
 				5d2c0e1a2b3d4e5f60123458 /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Services/WatchActivityStore.swift in Sources */,
 				3250d5ddd95dee7710fcc63e /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Services/WorkoutService.swift in Sources */,

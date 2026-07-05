@@ -110,6 +110,12 @@ public struct ActivityRecording: Codable, Sendable, Identifiable {
         self.elevationGainMeters = elevationGainMeters
         self.averageHeartRateBPM = averageHeartRateBPM
     }
+
+    public func renamed(to newTitle: String) -> ActivityRecording {
+        var copy = self
+        copy.title = newTitle
+        return copy
+    }
 }
 
 public enum SpeedDisplayMode: String, Codable, Sendable, CaseIterable, Identifiable {

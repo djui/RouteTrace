@@ -26,6 +26,9 @@ struct RouteDetailView: View {
     @State private var successMessage: String?
     @State private var infoMessage: String?
     @State private var isMapFullscreenPresented = false
+    @State private var showRenameAlert = false
+    @State private var editedRouteName = ""
+    @State private var isRenaming = false
 
     var body: some View {
         ScrollView {
@@ -111,6 +114,17 @@ struct RouteDetailView: View {
         } message: {
             Text(infoMessage ?? "")
         }
+        .alert("Rename Route", isPresented: $showRenameAlert) {
+            TextField("Route Name", text: $editedRouteName)
+                .textInputAutocapitalization(.words)
+            Button("Save") {
+                Task { await renameRoute() }
+            }
+            .disabled(editedRouteName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isRenaming)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Choose a name for this route.")
+        }
         .task {
             await loadRoute()
         }
@@ -194,6 +208,10 @@ struct RouteDetailView: View {
                 isSendingToWatch: isSendingToWatch,
                 onRebuildOfflineMap: { Task { await buildOfflinePack() } },
                 onSendToWatch: sendToWatchAction,
+                onRename: {
+                    editedRouteName = route.name
+                    showRenameAlert = true
+                },
                 onShare: shareRoute,
                 onDelete: { showDeleteConfirmation = true }
             )
@@ -222,6 +240,19 @@ struct RouteDetailView: View {
     #else
     private var sendToWatchAction: (() -> Void)? { nil }
     #endif
+
+    @MainActor
+    private func renameRoute() async {
+        isRenaming = true
+        defer { isRenaming = false }
+
+        do {
+            _ = try routeStore.renameRoute(for: route, to: editedRouteName)
+            routePackage = try routeStore.loadRoutePackage(for: route)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
 
     @MainActor
     private func loadRoute() async {

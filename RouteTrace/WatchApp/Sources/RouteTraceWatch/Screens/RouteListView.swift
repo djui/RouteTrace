@@ -5,6 +5,7 @@ struct RouteListView: View {
     @Environment(WatchRouteStore.self) private var routeStore
     @Environment(WatchActivityStore.self) private var activityStore
     @Environment(WatchConnectivityManager.self) private var connectivity
+    @Environment(WatchCloudRouteSyncService.self) private var cloudSync
     @Environment(WatchPreferences.self) private var preferences
     @State private var activeViewModel = ActiveRouteViewModel()
     @State private var showingSettings = false
@@ -57,12 +58,12 @@ struct RouteListView: View {
         NavigationStack {
             Group {
                 if isLoadingLibrary && routeStore.routes.isEmpty && activityStore.activities.isEmpty {
-                    ProgressView("Loading…")
+                    ProgressView(cloudSync.isSyncing ? "Syncing routes…" : "Loading…")
                 } else if routeStore.routes.isEmpty && activityStore.activities.isEmpty {
                     ContentUnavailableView(
                         "No Routes",
                         systemImage: "map",
-                        description: Text("Transfer a route from your iPhone to get started.")
+                        description: Text("Import a route on iPhone — it will appear here automatically via iCloud or Apple Watch transfer.")
                     )
                 } else {
                     libraryList
@@ -139,7 +140,7 @@ struct RouteListView: View {
     }
 
     private var isLoadingLibrary: Bool {
-        routeStore.isLoading || activityStore.isLoading
+        routeStore.isLoading || activityStore.isLoading || cloudSync.isSyncing
     }
 
     private var libraryList: some View {

@@ -254,6 +254,26 @@ public struct RoutePackage: Codable, Sendable, Identifiable {
         if manifest.tileCount < 3 { return .partial }
         return .ready
     }
+
+    public func renamed(to newName: String) -> RoutePackage {
+        RoutePackage(
+            id: id,
+            name: newName,
+            sourceFileName: sourceFileName,
+            importedAt: importedAt,
+            activityHint: activityHint,
+            distanceMeters: distanceMeters,
+            elevationGainMeters: elevationGainMeters,
+            elevationLossMeters: elevationLossMeters,
+            boundingBox: boundingBox,
+            originalPointCount: originalPointCount,
+            simplifiedPointCount: simplifiedPointCount,
+            route: route,
+            cues: cues,
+            offlineMapManifest: offlineMapManifest,
+            navigationWarning: navigationWarning
+        )
+    }
 }
 
 public enum TransferState: String, Codable, Sendable {

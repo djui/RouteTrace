@@ -203,6 +203,74 @@ final class RouteTraceSharedTests: XCTestCase {
         XCTAssertEqual(recording.displayTitle, "Loop")
     }
 
+    func testRoutePackageRenamedPreservesRouteData() throws {
+        let url = RouteTraceTestSupport.fixturesBundle.url(forResource: "simple_track", withExtension: "gpx")
+            ?? RouteTraceTestSupport.fixturesBundle.url(forResource: "simple_track", withExtension: "gpx", subdirectory: "Fixtures")
+        let resolvedURL = try XCTUnwrap(url)
+        let parsed = try GPXParser().parse(data: try Data(contentsOf: resolvedURL))
+        let package = RouteProcessor().makeRoutePackage(
+            from: parsed,
+            sourceFileName: "simple_track.gpx",
+            activityHint: .running
+        )
+
+        let renamed = package.renamed(to: "Morning Loop")
+
+        XCTAssertEqual(renamed.name, "Morning Loop")
+        XCTAssertEqual(renamed.id, package.id)
+        XCTAssertEqual(renamed.route, package.route)
+        XCTAssertEqual(renamed.distanceMeters, package.distanceMeters)
+    }
+
+    func testActivityRecordingRenamedPreservesData() {
+        let routeId = UUID()
+        let activityId = UUID()
+        let base = Date(timeIntervalSince1970: 1_700_000_000)
+        let trackPoint = TrackPoint(
+            timestamp: base,
+            latitude: 48.8566,
+            longitude: 2.3522,
+            horizontalAccuracyMeters: 5
+        )
+        let recording = ActivityRecording(
+            id: activityId,
+            routeId: routeId,
+            routeName: "Forest Loop",
+            title: "Morning run (Forest Loop)",
+            startedAt: base,
+            endedAt: base.addingTimeInterval(3600),
+            activityKind: .running,
+            trackPoints: [trackPoint],
+            totalDistanceMeters: 12_500,
+            elapsedSeconds: 3_600,
+            elevationGainMeters: 180
+        )
+
+        let renamed = recording.renamed(to: "PR attempt")
+
+        XCTAssertEqual(renamed.title, "PR attempt")
+        XCTAssertEqual(renamed.displayTitle, "PR attempt")
+        XCTAssertEqual(renamed.id, activityId)
+        XCTAssertEqual(renamed.routeId, routeId)
+        XCTAssertEqual(renamed.routeName, "Forest Loop")
+        XCTAssertEqual(renamed.trackPoints, [trackPoint])
+        XCTAssertEqual(renamed.totalDistanceMeters, 12_500)
+        XCTAssertEqual(renamed.elapsedSeconds, 3_600)
+        XCTAssertEqual(renamed.elevationGainMeters, 180)
+    }
+
+    func testGPXExportActivityUsesDisplayTitle() {
+        let activity = ActivityRecording(
+            routeId: UUID(),
+            routeName: "Forest Loop",
+            title: "Rainy gravel ride",
+            activityKind: .gravelCycling
+        )
+        let gpx = GPXExporter.exportActivity(activity, route: nil)
+        XCTAssertTrue(gpx.contains("<name>Rainy gravel ride</name>"))
+        XCTAssertFalse(gpx.contains("<name>Forest Loop</name>"))
+    }
+
     func testGPXExportActivityEmitsSeparateTrackSegments() {
         let base = Date(timeIntervalSince1970: 1_700_000_000)
         let activity = ActivityRecording(

@@ -45,7 +45,7 @@ public struct WatchActivityWidgetPayload: Codable, Sendable {
 }
 
 public enum WatchWidgetStateWriter {
-    private static var lastTimelineReloadAt: Date = .distantPast
+    nonisolated(unsafe) private static var lastTimelineReloadAt: Date = .distantPast
 
     public static func writeSnapshot(
         _ snapshot: NavigationSnapshot,

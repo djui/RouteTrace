@@ -10,6 +10,9 @@ final class RouteStore: ObservableObject {
 
     private let context: ModelContext
 
+    /// Called after a route package is persisted locally. Used for automatic Watch transfer.
+    var onRoutePackageSaved: ((UUID) -> Void)?
+
     init(context: ModelContext) {
         self.context = context
         try? RouteTracePaths.ensureDirectoriesExist()
@@ -84,6 +87,7 @@ final class RouteStore: ObservableObject {
         }
 
         try context.save()
+        onRoutePackageSaved?(package.id)
         return entity
     }
 
@@ -138,6 +142,33 @@ final class RouteStore: ObservableObject {
         guard let entity = try fetchRoute(id: routeID) else { return }
         entity.transferState = state
         try context.save()
+    }
+
+    func renameRoute(for entity: RouteEntity, to name: String) throws -> RouteEntity {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw RouteStoreError.emptyRouteName
+        }
+        guard trimmed != entity.name else {
+            return entity
+        }
+
+        let existing = try loadRoutePackage(for: entity)
+        let updated = existing.renamed(to: trimmed)
+        let saved = try saveRoutePackage(updated)
+
+        switch saved.transferState {
+        case .installed, .queued, .transferring:
+            saved.transferState = .notSent
+            try context.save()
+        case .notSent, .failed:
+            break
+        }
+
+        guard let refreshed = try fetchRoute(id: entity.id) else {
+            throw RouteStoreError.routeNotFound
+        }
+        return refreshed
     }
 
     func updateActivityHint(for entity: RouteEntity, to kind: ActivityKind) async throws -> RouteEntity {
@@ -214,6 +245,28 @@ final class RouteStore: ObservableObject {
         return entity
     }
 
+    func renameActivity(for entity: ActivityEntity, to title: String) throws -> ActivityEntity {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw RouteStoreError.emptyActivityTitle
+        }
+        guard trimmed != entity.title else {
+            return entity
+        }
+
+        entity.title = trimmed
+        let updated = entity.recording.renamed(to: trimmed)
+        entity.activityPayloadData = try RouteTracePayloadCoding.encode(updated)
+
+        let activityURL = RouteTracePaths.activitiesRoot
+            .appendingPathComponent("\(entity.id.uuidString).json")
+        let data = try RouteTracePayloadCoding.encode(updated)
+        try data.write(to: activityURL, options: .atomic)
+
+        try context.save()
+        return entity
+    }
+
     func deleteActivity(_ entity: ActivityEntity) throws {
         let activityURL = RouteTracePaths.activitiesRoot
             .appendingPathComponent("\(entity.id.uuidString).json")
@@ -274,6 +327,8 @@ enum RouteStoreError: Error, LocalizedError {
     case routePackageUnavailable
     case sourceGPXUnavailable
     case offlinePackSavedArchiveFailed
+    case emptyRouteName
+    case emptyActivityTitle
 
     var errorDescription: String? {
         switch self {
@@ -285,6 +340,10 @@ enum RouteStoreError: Error, LocalizedError {
             "The original GPX file is not available. Re-import this route to change its activity type."
         case .offlinePackSavedArchiveFailed:
             "Offline map downloaded, but the Watch transfer package could not be created. Tap Send to Watch to retry."
+        case .emptyRouteName:
+            "Route name cannot be empty."
+        case .emptyActivityTitle:
+            "Activity name cannot be empty."
         }
     }
 }

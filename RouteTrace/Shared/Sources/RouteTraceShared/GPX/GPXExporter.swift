@@ -35,11 +35,11 @@ public enum GPXExporter {
             #"<?xml version="1.0" encoding="UTF-8"?>"#,
             #"<gpx version="1.1" creator="RouteTrace">"#,
             "  <metadata>",
-            "    <name>\(escape(activity.routeName))</name>",
+            "    <name>\(escape(activity.displayTitle))</name>",
             "    <time>\(iso8601(activity.startedAt))</time>",
             "  </metadata>",
             "  <trk>",
-            "    <name>\(escape(activity.routeName))</name>"
+            "    <name>\(escape(activity.displayTitle))</name>"
         ]
 
         let segments = TrackSegmentSplitter.continuousSegments(from: activity.trackPoints)

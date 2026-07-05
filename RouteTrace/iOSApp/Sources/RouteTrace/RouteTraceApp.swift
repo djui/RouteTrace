@@ -1,3 +1,4 @@
+import RouteTraceShared
 import SwiftData
 import SwiftUI
 
@@ -30,6 +31,7 @@ struct RouteTraceRootView: View {
     @State private var routeStore: RouteStore?
     #if canImport(WatchConnectivity)
     @State private var connectivityManager: PhoneConnectivityManager?
+    @State private var watchAutoTransfer: RouteWatchAutoTransfer?
     #endif
     @State private var didActivateConnectivity = false
 
@@ -86,8 +88,21 @@ struct RouteTraceRootView: View {
                     routeStore: routeStore
                 )
                 connectivityManager = manager
+                let autoTransfer = RouteWatchAutoTransfer(
+                    routeStore: routeStore,
+                    connectivityManager: manager
+                )
+                autoTransfer.registerWithRouteStore()
+                watchAutoTransfer = autoTransfer
+                manager.onSessionActivated = { [weak autoTransfer] in
+                    autoTransfer?.transferPendingRoutes()
+                }
                 manager.activate()
             }
+            #endif
+
+            #if canImport(WatchConnectivity)
+            watchAutoTransfer?.transferPendingRoutes()
             #endif
         }
     }

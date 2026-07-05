@@ -27,14 +27,24 @@ final class WatchConnectivityManager: NSObject {
         } else {
             isActivated = true
             isReachable = session.isReachable
-            applyReceivedApplicationContext(session.receivedApplicationContext)
+            if let batteryMode = Self.parseBatteryMode(from: session.receivedApplicationContext) {
+                applySyncedBatteryMode(batteryMode)
+            }
         }
     }
 
     func applyReceivedApplicationContext(_ context: [String: Any]) {
-        guard let payload = SettingsSyncPayload(dictionary: context) else { return }
-        WatchPreferences.shared.applySyncedBatteryMode(payload.batteryMode)
+        guard let batteryMode = Self.parseBatteryMode(from: context) else { return }
+        applySyncedBatteryMode(batteryMode)
+    }
+
+    private func applySyncedBatteryMode(_ batteryMode: BatteryMode) {
+        WatchPreferences.shared.applySyncedBatteryMode(batteryMode)
         lastSyncMessage = "Synced battery mode from iPhone."
+    }
+
+    private nonisolated static func parseBatteryMode(from context: [String: Any]) -> BatteryMode? {
+        SettingsSyncPayload(dictionary: context)?.batteryMode
     }
 
     func sendActivityRecording(_ recording: ActivityRecording) async {
@@ -116,11 +126,12 @@ extension WatchConnectivityManager: WCSessionDelegate {
         let activated = activationState == .activated
         let reachable = session.isReachable
         let message = error?.localizedDescription
+        let batteryMode = activated ? Self.parseBatteryMode(from: session.receivedApplicationContext) : nil
         Task { @MainActor in
             isActivated = activated
             isReachable = reachable
-            if activated {
-                applyReceivedApplicationContext(session.receivedApplicationContext)
+            if let batteryMode {
+                applySyncedBatteryMode(batteryMode)
             }
             if let message {
                 lastSyncMessage = message
@@ -131,8 +142,11 @@ extension WatchConnectivityManager: WCSessionDelegate {
     }
 
     nonisolated func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) {
+        let batteryMode = Self.parseBatteryMode(from: applicationContext)
         Task { @MainActor in
-            applyReceivedApplicationContext(applicationContext)
+            if let batteryMode {
+                applySyncedBatteryMode(batteryMode)
+            }
         }
     }
 

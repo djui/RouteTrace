@@ -14,6 +14,7 @@
 	<array>
 		<string>workout-processing</string>
 		<string>location</string>
+		<string>remote-notification</string>
 	</array>
 </dict>
 </plist>

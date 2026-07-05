@@ -20,6 +20,9 @@ struct RouteLibraryView: View {
     @State private var isExporting = false
     @State private var buildingRouteID: UUID?
     @State private var sendingRouteID: UUID?
+    @State private var routePendingRename: RouteEntity?
+    @State private var editedRouteName = ""
+    @State private var isRenaming = false
 
     var body: some View {
         NavigationStack {
@@ -49,6 +52,10 @@ struct RouteLibraryView: View {
                             isSendingToWatch: sendingRouteID == route.id,
                             onRebuildOfflineMap: { Task { await buildOfflinePack(for: route) } },
                             onSendToWatch: sendToWatchAction(for: route),
+                            onRename: {
+                                routePendingRename = route
+                                editedRouteName = route.name
+                            },
                             onShare: { shareRoute(route) },
                             onDelete: { deleteRoute($0) }
                         )
@@ -94,6 +101,24 @@ struct RouteLibraryView: View {
                 Button("OK", role: .cancel) {}
             } message: {
                 Text(successMessage ?? "")
+            }
+            .alert("Rename Route", isPresented: Binding(
+                get: { routePendingRename != nil },
+                set: { if !$0 { routePendingRename = nil } }
+            )) {
+                TextField("Route Name", text: $editedRouteName)
+                    .textInputAutocapitalization(.words)
+                Button("Save") {
+                    if let route = routePendingRename {
+                        Task { await renameRoute(route) }
+                    }
+                }
+                .disabled(editedRouteName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isRenaming)
+                Button("Cancel", role: .cancel) {
+                    routePendingRename = nil
+                }
+            } message: {
+                Text("Choose a name for this route.")
             }
             #if canImport(WatchConnectivity)
             .onAppear {
@@ -164,6 +189,19 @@ struct RouteLibraryView: View {
             errorMessage = error.localizedDescription
         }
     }
+
+    @MainActor
+    private func renameRoute(_ route: RouteEntity) async {
+        isRenaming = true
+        defer { isRenaming = false }
+
+        do {
+            _ = try routeStore.renameRoute(for: route, to: editedRouteName)
+            routePendingRename = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
 }
 
 private struct RouteListRow: View {
@@ -174,6 +212,7 @@ private struct RouteListRow: View {
     let isSendingToWatch: Bool
     let onRebuildOfflineMap: () -> Void
     let onSendToWatch: (() -> Void)?
+    let onRename: () -> Void
     let onShare: () -> Void
     let onDelete: (RouteEntity) -> Void
 
@@ -192,6 +231,7 @@ private struct RouteListRow: View {
                 isSendingToWatch: isSendingToWatch,
                 onRebuildOfflineMap: onRebuildOfflineMap,
                 onSendToWatch: onSendToWatch,
+                onRename: onRename,
                 onShare: onShare,
                 onDelete: { showDeleteConfirmation = true }
             )

@@ -70,6 +70,8 @@ final class PhoneConnectivityManager: NSObject, ObservableObject {
     @Published private(set) var lastTransferError: String?
     @Published private(set) var lastTransferSuccess: String?
 
+    var onSessionActivated: (() -> Void)?
+
     init(
         context: ModelContext,
         routeStore: RouteStore,
@@ -105,6 +107,7 @@ final class PhoneConnectivityManager: NSObject, ObservableObject {
             session.activate()
         } else {
             refreshSessionState()
+            onSessionActivated?()
         }
     }
 
@@ -221,6 +224,7 @@ extension PhoneConnectivityManager: WCSessionDelegate {
             refreshSessionState()
             if activationState == .activated {
                 syncSettingsToWatch(batteryMode: (try? routeStore.loadSettings())?.batteryMode ?? .normal)
+                onSessionActivated?()
             }
             if let error {
                 lastTransferError = error.localizedDescription

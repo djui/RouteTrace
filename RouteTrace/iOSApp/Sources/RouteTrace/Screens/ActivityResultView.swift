@@ -13,6 +13,9 @@ struct ActivityResultView: View {
     @State private var isExporting = false
     @State private var isSharePresented = false
     @State private var showDeleteConfirmation = false
+    @State private var showRenameAlert = false
+    @State private var editedActivityTitle = ""
+    @State private var isRenaming = false
     @State private var isMapFullscreenPresented = false
     @State private var errorMessage: String?
 
@@ -91,6 +94,13 @@ struct ActivityResultView: View {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
                     Button {
+                        editedActivityTitle = activity.displayTitle
+                        showRenameAlert = true
+                    } label: {
+                        Label("Rename", systemImage: "pencil")
+                    }
+
+                    Button {
                         exportGPX()
                     } label: {
                         Label("Share", systemImage: "square.and.arrow.up")
@@ -141,6 +151,17 @@ struct ActivityResultView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(errorMessage ?? "")
+        }
+        .alert("Rename Activity", isPresented: $showRenameAlert) {
+            TextField("Activity Name", text: $editedActivityTitle)
+                .textInputAutocapitalization(.words)
+            Button("Save") {
+                Task { await renameActivity() }
+            }
+            .disabled(editedActivityTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isRenaming)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Choose a name for this activity.")
         }
         .task {
             await loadPlannedRoute()
@@ -209,6 +230,19 @@ struct ActivityResultView: View {
         do {
             try routeStore.deleteActivity(activity)
             dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private func renameActivity() async {
+        isRenaming = true
+        defer { isRenaming = false }
+
+        do {
+            _ = try routeStore.renameActivity(for: activity, to: editedActivityTitle)
+            showRenameAlert = false
         } catch {
             errorMessage = error.localizedDescription
         }

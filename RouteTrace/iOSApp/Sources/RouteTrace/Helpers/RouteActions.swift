@@ -49,6 +49,7 @@ struct RouteActionMenuItems: View {
     var isSendingToWatch: Bool = false
     var onRebuildOfflineMap: () -> Void
     var onSendToWatch: (() -> Void)?
+    var onRename: (() -> Void)?
     var onShare: () -> Void
     var onDelete: () -> Void
 
@@ -73,6 +74,14 @@ struct RouteActionMenuItems: View {
             .disabled(isSendingToWatch)
         }
         #endif
+
+        if let onRename {
+            Button {
+                onRename()
+            } label: {
+                Label("Rename", systemImage: "pencil")
+            }
+        }
 
         Divider()
 
