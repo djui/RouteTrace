@@ -25,6 +25,30 @@ final class ActiveRouteViewModel {
     )
     private(set) var elapsedSeconds: TimeInterval = 0
     private(set) var lastError: String?
+    private(set) var gpsAcquisitionState: GPSAcquisitionState = .idle
+    private(set) var previewCoordinate: GeoCoordinate?
+
+    var displayCoordinate: GeoCoordinate? {
+        navigationSnapshot?.currentCoordinate ?? previewCoordinate
+    }
+
+    var showsWeakGPSIndicator: Bool {
+        switch gpsAcquisitionState {
+        case .warmingUp, .acquiring:
+            return true
+        case .idle, .ready:
+            return false
+        }
+    }
+
+    var gpsStatusLabel: String? {
+        switch gpsAcquisitionState {
+        case .idle, .ready:
+            return nil
+        case .warmingUp, .acquiring:
+            return "Acquiring GPS…"
+        }
+    }
 
     let locationService = LocationTrackingService()
     let workoutService = WorkoutService()
@@ -37,6 +61,10 @@ final class ActiveRouteViewModel {
     private var lastNotifiedOffRouteLevel: RouteNotificationService.OffRouteLevel = .none
     private var lastNotifiedCueID: UUID?
     private var lastPersistenceAt: Date = .distantPast
+    private var isWarmingUpGPS = false
+    private var warmupActivityKind: ActivityKind = .running
+    private var currentBatteryMode: BatteryMode = .normal
+    private var locationQualityFilter = LocationQualityFilter()
 
     var isActive: Bool { phase == .active || phase == .paused || phase == .summary }
     var isPaused: Bool { phase == .paused }
@@ -98,6 +126,20 @@ final class ActiveRouteViewModel {
 
         locationService.applyBatteryMode(preferences.batteryMode)
         locationService.requestAuthorization()
+        currentBatteryMode = preferences.batteryMode
+
+        if let lastPoint = recording.trackPoints.last {
+            locationQualityFilter.reset(
+                startingStabilized: true,
+                seed: qualityInput(from: lastPoint)
+            )
+            previewCoordinate = lastPoint.coordinate
+            gpsAcquisitionState = .ready
+        } else {
+            locationQualityFilter.reset()
+            previewCoordinate = nil
+            gpsAcquisitionState = .acquiring
+        }
 
         phase = persisted.phase == "paused" ? .paused : .active
         if phase == .active {
@@ -112,6 +154,35 @@ final class ActiveRouteViewModel {
 
         publishWidgetState()
         return true
+    }
+
+    func beginGPSWarmup(preferences: WatchPreferences, activityKind: ActivityKind) {
+        guard phase == .idle else { return }
+
+        warmupActivityKind = activityKind
+        currentBatteryMode = preferences.batteryMode
+        locationQualityFilter.reset()
+        previewCoordinate = nil
+        gpsAcquisitionState = .warmingUp
+        isWarmingUpGPS = true
+
+        locationService.applyBatteryMode(preferences.batteryMode)
+        locationService.requestAuthorization()
+        if !locationService.isTracking {
+            locationService.startTracking(distanceFilterMeters: distanceFilter(for: preferences.batteryMode))
+        }
+    }
+
+    func setWarmupActivityKind(_ activityKind: ActivityKind) {
+        warmupActivityKind = activityKind
+    }
+
+    func endGPSWarmup() {
+        guard phase == .idle, isWarmingUpGPS else { return }
+        isWarmingUpGPS = false
+        gpsAcquisitionState = .idle
+        previewCoordinate = nil
+        locationService.stopTracking()
     }
 
     func start(route: RoutePackage, activityKind: ActivityKind, preferences: WatchPreferences) async {
@@ -134,9 +205,30 @@ final class ActiveRouteViewModel {
             activityKind: activityKind
         )
 
+        isWarmingUpGPS = false
+        currentBatteryMode = preferences.batteryMode
+
+        if gpsAcquisitionState == .ready, let lastSample = locationService.lastSample {
+            locationQualityFilter.reset(
+                startingStabilized: true,
+                seed: qualityInput(from: lastSample)
+            )
+            previewCoordinate = GeoCoordinate(
+                latitude: lastSample.coordinate.latitude,
+                longitude: lastSample.coordinate.longitude
+            )
+            gpsAcquisitionState = .ready
+        } else {
+            locationQualityFilter.reset()
+            previewCoordinate = nil
+            gpsAcquisitionState = .acquiring
+        }
+
         locationService.applyBatteryMode(preferences.batteryMode)
         locationService.requestAuthorization()
-        locationService.startTracking(distanceFilterMeters: distanceFilter(for: preferences.batteryMode))
+        if !locationService.isTracking {
+            locationService.startTracking(distanceFilterMeters: distanceFilter(for: preferences.batteryMode))
+        }
 
         if preferences.useHealthKitWorkouts {
             await workoutService.requestAuthorization(for: activityKind)
@@ -166,8 +258,10 @@ final class ActiveRouteViewModel {
     func resume(preferences: WatchPreferences) {
         guard phase == .paused else { return }
         phase = .active
+        currentBatteryMode = preferences.batteryMode
         locationService.applyBatteryMode(preferences.batteryMode)
         locationService.startTracking(distanceFilterMeters: distanceFilter(for: preferences.batteryMode))
+        gpsAcquisitionState = locationQualityFilter.hasStabilized ? .ready : .acquiring
         workoutService.resumeWorkout()
         startTimer()
         publishWidgetState()
@@ -264,6 +358,10 @@ final class ActiveRouteViewModel {
         routePackage = nil
         navigationEngine = nil
         navigationSnapshot = nil
+        previewCoordinate = nil
+        gpsAcquisitionState = .idle
+        isWarmingUpGPS = false
+        locationQualityFilter.reset()
         lastNotifiedOffRouteLevel = .none
         lastNotifiedCueID = nil
         ActiveActivityPersistence.clear()
@@ -275,7 +373,52 @@ final class ActiveRouteViewModel {
     }
 
     private func handleLocation(_ sample: LocationSample) {
+        let input = qualityInput(from: sample)
+
+        if phase == .idle {
+            guard isWarmingUpGPS else { return }
+
+            let outcome = locationQualityFilter.evaluate(
+                input: input,
+                activityKind: warmupActivityKind,
+                batteryMode: currentBatteryMode,
+                mode: .warmup
+            )
+
+            guard case .rejected = outcome else {
+                updatePreviewCoordinate(from: sample)
+                gpsAcquisitionState = locationQualityFilter.isWarmupReady(
+                    input: input,
+                    activityKind: warmupActivityKind
+                ) ? .ready : .warmingUp
+                return
+            }
+
+            gpsAcquisitionState = .warmingUp
+            return
+        }
+
         guard phase == .active, let route = routePackage, let engine = navigationEngine else { return }
+
+        let outcome = locationQualityFilter.evaluate(
+            input: input,
+            activityKind: activityKind,
+            batteryMode: currentBatteryMode,
+            mode: .recording
+        )
+
+        switch outcome {
+        case .rejected:
+            gpsAcquisitionState = locationQualityFilter.hasStabilized ? .ready : .acquiring
+            return
+        case .previewOnly:
+            updatePreviewCoordinate(from: sample)
+            gpsAcquisitionState = .acquiring
+            return
+        case .accepted:
+            updatePreviewCoordinate(from: sample)
+            gpsAcquisitionState = .ready
+        }
 
         guard let update = engine.update(
             latitude: sample.coordinate.latitude,
@@ -487,5 +630,37 @@ final class ActiveRouteViewModel {
         case .saver: 12
         case .ultraSaver: 25
         }
+    }
+
+    private func qualityInput(from sample: LocationSample) -> LocationQualityInput {
+        LocationQualityInput(
+            latitude: sample.coordinate.latitude,
+            longitude: sample.coordinate.longitude,
+            horizontalAccuracyMeters: sample.horizontalAccuracyMeters,
+            speedMetersPerSecond: sample.speedMetersPerSecond,
+            timestamp: sample.timestamp
+        )
+    }
+
+    private func qualityInput(from point: TrackPoint) -> LocationQualityInput {
+        LocationQualityInput(
+            latitude: point.latitude,
+            longitude: point.longitude,
+            horizontalAccuracyMeters: point.horizontalAccuracyMeters,
+            speedMetersPerSecond: point.speedMetersPerSecond,
+            timestamp: point.timestamp
+        )
+    }
+
+    private func updatePreviewCoordinate(from sample: LocationSample) {
+        guard MapMath.isValidCoordinate(
+            latitude: sample.coordinate.latitude,
+            longitude: sample.coordinate.longitude
+        ) else { return }
+
+        previewCoordinate = GeoCoordinate(
+            latitude: sample.coordinate.latitude,
+            longitude: sample.coordinate.longitude
+        )
     }
 }

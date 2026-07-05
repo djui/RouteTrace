@@ -30,6 +30,7 @@ final class LocationTrackingService: NSObject {
         manager.desiredAccuracy = kCLLocationAccuracyBest
         manager.activityType = .fitness
         manager.distanceFilter = 5
+        manager.pausesLocationUpdatesAutomatically = false
         #if os(iOS)
         manager.allowsBackgroundLocationUpdates = true
         manager.showsBackgroundLocationIndicator = true

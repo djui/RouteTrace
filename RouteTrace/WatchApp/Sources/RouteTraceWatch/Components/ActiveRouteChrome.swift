@@ -163,6 +163,13 @@ struct ActiveRouteChrome<Content: View>: View {
                 )
                 .padding(.top, RouteAppearance.watchMapDistanceTopInset)
             }
+            .overlay(alignment: .topLeading) {
+                if viewModel.showsWeakGPSIndicator, let label = viewModel.gpsStatusLabel {
+                    GPSStatusPill(label: label)
+                        .padding(.leading, RouteAppearance.watchCornerClearance)
+                        .padding(.top, RouteAppearance.watchEdgeInset)
+                }
+            }
             .overlay(alignment: .topTrailing) {
                 ActiveRouteStatusBar(
                     showActivityIcon: !showsSystemWorkoutIndicator,
@@ -196,6 +203,10 @@ struct ActiveRouteChrome<Content: View>: View {
     private var standardChromeOverlay: some View {
         VStack(spacing: 0) {
             HStack(alignment: .top) {
+                if viewModel.showsWeakGPSIndicator, let label = viewModel.gpsStatusLabel {
+                    GPSStatusPill(label: label)
+                }
+
                 Spacer(minLength: 0)
 
                 ActiveRouteStatusBar(
@@ -223,6 +234,19 @@ struct ActiveRouteChrome<Content: View>: View {
         default:
             return false
         }
+    }
+}
+
+struct GPSStatusPill: View {
+    let label: String
+
+    var body: some View {
+        Label(label, systemImage: "location.slash")
+            .font(.caption2)
+            .foregroundStyle(.orange)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .routeMapOverlayBackground(in: Capsule())
     }
 }
 

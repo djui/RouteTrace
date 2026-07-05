@@ -73,10 +73,10 @@ struct OfflineMapView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .ignoresSafeArea()
         .onAppear { loadTiles() }
-        .onChange(of: viewModel.navigationSnapshot?.currentCoordinate?.latitude) { _, _ in
+        .onChange(of: viewModel.displayCoordinate?.latitude) { _, _ in
             handleLocationUpdate()
         }
-        .onChange(of: viewModel.navigationSnapshot?.currentCoordinate?.longitude) { _, _ in
+        .onChange(of: viewModel.displayCoordinate?.longitude) { _, _ in
             handleLocationUpdate()
         }
         .onChange(of: currentSpan) { _, _ in
@@ -198,7 +198,7 @@ struct OfflineMapView: View {
     private func loadTiles() {
         guard let routeID = viewModel.routePackage?.id,
               let tileStore = routeStore.tileStore(for: routeID),
-              let coordinate = viewModel.navigationSnapshot?.currentCoordinate ?? viewModel.routePackage?.boundingBox.center else {
+              let coordinate = viewModel.displayCoordinate ?? viewModel.routePackage?.boundingBox.center else {
             return
         }
 
@@ -280,7 +280,7 @@ struct OfflineMapView: View {
             return
         }
 
-        guard let coordinate = viewModel.navigationSnapshot?.currentCoordinate ?? Optional(route.boundingBox.center) else {
+        guard let coordinate = viewModel.displayCoordinate ?? Optional(route.boundingBox.center) else {
             return
         }
 
@@ -399,7 +399,7 @@ struct OfflineMapView: View {
                 tileY: tile.y,
                 zoom: renderZoom
             )
-            let userPixel = viewModel.navigationSnapshot?.currentCoordinate.map {
+            let userPixel = viewModel.displayCoordinate.map {
                 MapMath.coordinateToPixel(
                     coordinate: $0,
                     tileX: tile.x,
@@ -418,7 +418,7 @@ struct OfflineMapView: View {
             drawTurnMarker(&context, at: pt, bearing: cue.bearingAfter, kind: cue.kind)
         }
 
-        if viewModel.navigationSnapshot?.currentCoordinate != nil {
+        if viewModel.displayCoordinate != nil {
             let heading = ActiveRouteMapOverlay.resolvedHeadingDegrees(
                 courseDegrees: viewModel.locationService.lastSample?.courseDegrees,
                 fallbackBearing: viewModel.navigationSnapshot?.nextCue?.bearingAfter
@@ -505,7 +505,7 @@ struct OfflineMapView: View {
     ) {
         guard coordinates.count >= 2 else { return }
 
-        let userPixel = viewModel.navigationSnapshot?.currentCoordinate.map {
+        let userPixel = viewModel.displayCoordinate.map {
             MapMath.coordinateToPixel(
                 coordinate: $0,
                 tileX: tile.x,
