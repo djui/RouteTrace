@@ -59,18 +59,20 @@ final class LocationTrackingService: NSObject {
         isTracking = false
     }
 
-    func applyBatteryMode(_ mode: BatteryMode) {
-        switch mode {
+    func applyBatteryPolicy(_ policy: BatteryModePolicy) {
+        switch policy.mode {
         case .normal:
             manager.desiredAccuracy = kCLLocationAccuracyBest
-            manager.distanceFilter = 5
         case .saver:
             manager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
-            manager.distanceFilter = 12
         case .ultraSaver:
             manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
-            manager.distanceFilter = 25
         }
+        manager.distanceFilter = policy.distanceFilterMeters
+    }
+
+    func applyBatteryMode(_ mode: BatteryMode) {
+        applyBatteryPolicy(BatteryModePolicy(mode: mode))
     }
 }
 

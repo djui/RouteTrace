@@ -120,6 +120,16 @@ final class PhoneConnectivityManager: NSObject, ObservableObject {
         #endif
     }
 
+    func syncSettingsToWatch(batteryMode: BatteryMode) {
+        guard let session, session.activationState == .activated else { return }
+        let payload = SettingsSyncPayload(batteryMode: batteryMode)
+        do {
+            try session.updateApplicationContext(payload.dictionaryRepresentation)
+        } catch {
+            lastTransferError = error.localizedDescription
+        }
+    }
+
     func transferRouteToWatch(routeID: UUID) throws {
         guard let session else { throw ConnectivityError.sessionUnavailable }
         refreshSessionState()
@@ -209,6 +219,9 @@ extension PhoneConnectivityManager: WCSessionDelegate {
     ) {
         Task { @MainActor in
             refreshSessionState()
+            if activationState == .activated {
+                syncSettingsToWatch(batteryMode: (try? routeStore.loadSettings())?.batteryMode ?? .normal)
+            }
             if let error {
                 lastTransferError = error.localizedDescription
             }

@@ -38,11 +38,20 @@ final class WatchPreferences {
         didSet { UserDefaults.standard.set(cyclingSpeedDisplay.rawValue, forKey: Keys.cyclingSpeedDisplay) }
     }
 
+    var isLowPowerModeEnabled: Bool {
+        LowPowerModeStatus.isEnabled
+    }
+
     func speedDisplayMode(for activityKind: ActivityKind) -> SpeedDisplayMode {
         switch activityKind.speedCategory {
         case .running: runningSpeedDisplay
         case .cycling: cyclingSpeedDisplay
         }
+    }
+
+    func applySyncedBatteryMode(_ mode: BatteryMode) {
+        guard batteryMode != mode else { return }
+        batteryMode = mode
     }
 
     private enum Keys {
@@ -54,6 +63,15 @@ final class WatchPreferences {
         static let navigationNotificationsEnabled = "watch.navigationNotificationsEnabled"
         static let runningSpeedDisplay = "watch.runningSpeedDisplay"
         static let cyclingSpeedDisplay = "watch.cyclingSpeedDisplay"
+        static let ultraSaverHealthKitPromptShown = "watch.ultraSaverHealthKitPromptShown"
+    }
+
+    static var shouldPromptUltraSaverHealthKit: Bool {
+        !UserDefaults.standard.bool(forKey: Keys.ultraSaverHealthKitPromptShown)
+    }
+
+    static func markUltraSaverHealthKitPromptShown() {
+        UserDefaults.standard.set(true, forKey: Keys.ultraSaverHealthKitPromptShown)
     }
 
     private init() {
@@ -87,15 +105,28 @@ final class WatchPreferences {
 struct SettingsView: View {
     @Environment(WatchPreferences.self) private var preferences
 
+    @State private var showUltraSaverHealthKitPrompt = false
+
     var body: some View {
         @Bindable var preferences = preferences
 
         Form {
+            if preferences.isLowPowerModeEnabled {
+                Section {
+                    Label("Low Power Mode is on. Battery settings are elevated automatically.", systemImage: "battery.25")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             Section {
                 Picker("Mode", selection: $preferences.batteryMode) {
                     ForEach(BatteryMode.allCases) { mode in
                         Text(mode.displayName).tag(mode)
                     }
+                }
+                .onChange(of: preferences.batteryMode) { _, mode in
+                    handleBatteryModeChange(mode)
                 }
             } header: {
                 Text("Battery")
@@ -118,7 +149,15 @@ struct SettingsView: View {
             } header: {
                 Text("Map")
             } footer: {
-                Text(preferences.mapDisplayMode.detailDescription)
+                Text(mapSectionFooter)
+            }
+
+            Section {
+                Toggle("Record HealthKit Workout", isOn: $preferences.useHealthKitWorkouts)
+            } header: {
+                Text("Workout")
+            } footer: {
+                Text("Turn off to navigate without heart rate or workout session overhead.")
             }
 
             Section {
@@ -143,5 +182,38 @@ struct SettingsView: View {
             }
         }
         .navigationTitle("Settings")
+        .alert("Save more battery?", isPresented: $showUltraSaverHealthKitPrompt) {
+            Button("Turn Off Workout Recording") {
+                preferences.useHealthKitWorkouts = false
+                WatchPreferences.markUltraSaverHealthKitPromptShown()
+            }
+            Button("Keep Recording", role: .cancel) {
+                WatchPreferences.markUltraSaverHealthKitPromptShown()
+            }
+        } message: {
+            Text("Ultra Saver works best without HealthKit workout recording.")
+        }
+    }
+
+    private var mapSectionFooter: String {
+        var parts = [preferences.mapDisplayMode.detailDescription]
+        if let hint = preferences.batteryMode.mapSettingsConflictHint,
+           preferences.mapDisplayMode == .onlineNative {
+            parts.append(hint)
+        }
+        return parts.joined(separator: " ")
+    }
+
+    private func handleBatteryModeChange(_ mode: BatteryMode) {
+        if mode == .ultraSaver,
+           preferences.useHealthKitWorkouts,
+           WatchPreferences.shouldPromptUltraSaverHealthKit {
+            showUltraSaverHealthKitPrompt = true
+        }
+
+        if let suggested = BatteryModePolicy(mode: mode).suggestedMapDisplayMode,
+           preferences.mapDisplayMode != suggested {
+            preferences.mapDisplayMode = suggested
+        }
     }
 }

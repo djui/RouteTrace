@@ -73,6 +73,7 @@ struct ActiveRouteStatusBar: View {
     let showActivityIcon: Bool
     let activityKind: ActivityKind
     let isPaused: Bool
+    let animateActivityIcon: Bool
 
     var body: some View {
         HStack(spacing: 4) {
@@ -81,11 +82,25 @@ struct ActiveRouteStatusBar: View {
                     .font(.caption2)
                     .foregroundStyle(.orange)
             } else if showActivityIcon {
-                Image(systemName: activityKind.systemImage)
-                    .foregroundStyle(.green)
-                    .font(.caption2)
-                    .symbolEffect(.pulse, options: .repeating)
+                Group {
+                    Image(systemName: activityKind.systemImage)
+                        .foregroundStyle(.green)
+                        .font(.caption2)
+                }
+                .modifier(ConditionalPulseEffect(isEnabled: animateActivityIcon))
             }
+        }
+    }
+}
+
+private struct ConditionalPulseEffect: ViewModifier {
+    let isEnabled: Bool
+
+    func body(content: Content) -> some View {
+        if isEnabled {
+            content.symbolEffect(.pulse, options: .repeating)
+        } else {
+            content
         }
     }
 }
@@ -105,6 +120,10 @@ struct ActiveRouteChrome<Content: View>: View {
 
     private var showsLiveMapBrowseChrome: Bool {
         uiState.selectedPage == .liveMap && !uiState.isMapFocus && !isLuminanceReduced
+    }
+
+    private var animatesActivityIcon: Bool {
+        uiState.selectedPage == .liveMap && !isLuminanceReduced
     }
 
     var body: some View {
@@ -174,7 +193,8 @@ struct ActiveRouteChrome<Content: View>: View {
                 ActiveRouteStatusBar(
                     showActivityIcon: !showsSystemWorkoutIndicator,
                     activityKind: viewModel.activityKind,
-                    isPaused: viewModel.isPaused
+                    isPaused: viewModel.isPaused,
+                    animateActivityIcon: animatesActivityIcon
                 )
                 .padding(.trailing, RouteAppearance.watchCornerClearance)
                 .padding(.top, RouteAppearance.watchEdgeInset)
@@ -212,7 +232,8 @@ struct ActiveRouteChrome<Content: View>: View {
                 ActiveRouteStatusBar(
                     showActivityIcon: !showsSystemWorkoutIndicator,
                     activityKind: viewModel.activityKind,
-                    isPaused: viewModel.isPaused
+                    isPaused: viewModel.isPaused,
+                    animateActivityIcon: animatesActivityIcon
                 )
             }
             .padding(.horizontal, 4)
