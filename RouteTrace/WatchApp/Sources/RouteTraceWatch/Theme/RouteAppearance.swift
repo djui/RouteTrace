@@ -68,7 +68,7 @@ enum RouteAppearance {
     static let watchOverlayHorizontalInset: CGFloat = 12
 
     /// Centered map distance bubble — below system time and status icons.
-    static let watchMapDistanceTopInset: CGFloat = 20
+    static let watchMapDistanceTopInset: CGFloat = 38
 
     /// Crown zoom step per detent — smaller = finer zoom increments.
     static let mapCrownStep: Double = 0.001

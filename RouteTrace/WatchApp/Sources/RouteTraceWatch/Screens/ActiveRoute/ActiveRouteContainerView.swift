@@ -30,25 +30,31 @@ struct ActiveRouteContainerView: View {
 
     private var carousel: some View {
         ActiveRouteChrome(uiState: uiState, viewModel: viewModel) {
-            TabView(selection: $uiState.selectedPage) {
-                RouteControlsView(viewModel: viewModel)
-                    .tag(RoutePage.controls)
+            ZStack {
+                TabView(selection: $uiState.selectedPage) {
+                    RouteControlsView(viewModel: viewModel)
+                        .tag(RoutePage.controls)
 
-                LiveMapView(viewModel: viewModel, uiState: uiState)
-                    .tag(RoutePage.liveMap)
+                    LiveMapView(viewModel: viewModel, uiState: uiState)
+                        .tag(RoutePage.liveMap)
 
-                DirectionsView(viewModel: viewModel)
-                    .tag(RoutePage.directions)
+                    DirectionsView(viewModel: viewModel)
+                        .tag(RoutePage.directions)
 
-                AltitudeProfileView(viewModel: viewModel)
-                    .tag(RoutePage.altitude)
+                    AltitudeProfileView(viewModel: viewModel)
+                        .tag(RoutePage.altitude)
 
-                MetricsView(viewModel: viewModel, uiState: uiState)
-                    .tag(RoutePage.metrics)
+                    MetricsView(viewModel: viewModel, uiState: uiState)
+                        .tag(RoutePage.metrics)
+                }
+                .tabViewStyle(.page(indexDisplayMode: .never))
+                .disabled(uiState.isMapFocus)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                if uiState.selectedPage == .liveMap {
+                    BrowseMapCrownLayer(uiState: uiState)
+                }
             }
-            .tabViewStyle(.page(indexDisplayMode: .never))
-            .disabled(uiState.isMapFocus)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 

@@ -17,7 +17,7 @@ struct LiveMapView: View {
     }
 
     private var crownEnabled: Bool {
-        uiState.isMapFocus || uiState.selectedPage == .liveMap
+        uiState.isMapFocus
     }
 
     private var usesOfflineTiles: Bool {
@@ -202,7 +202,22 @@ struct LiveMapView: View {
     }
 }
 
-private struct MapCrownInteraction: ViewModifier {
+struct BrowseMapCrownLayer: View {
+    @Bindable var uiState: ActiveRouteUIState
+
+    var body: some View {
+        Color.clear
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .allowsHitTesting(false)
+            .modifier(MapCrownInteraction(
+                isEnabled: true,
+                hapticFeedback: true,
+                mapSpan: $uiState.mapSpan
+            ))
+    }
+}
+
+struct MapCrownInteraction: ViewModifier {
     let isEnabled: Bool
     let hapticFeedback: Bool
     @Binding var mapSpan: Double
