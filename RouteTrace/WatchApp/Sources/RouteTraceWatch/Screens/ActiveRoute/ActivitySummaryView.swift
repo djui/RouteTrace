@@ -17,47 +17,48 @@ struct ActivitySummaryView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Activity Summary")
-                    .font(.headline)
+        ZStack(alignment: .bottom) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Activity Summary")
+                        .font(.headline)
 
-                summaryRow("Elapsed", RouteFormatting.duration(viewModel.elapsedSeconds), "clock")
-                summaryRow("Distance", RouteFormatting.distance(viewModel.recording.totalDistanceMeters), "ruler")
-                summaryRow(
-                    speedMode.averageLabel,
-                    RouteFormatting.speedOrPace(viewModel.averageSpeedMetersPerSecond, mode: speedMode),
-                    "speedometer"
-                )
-                summaryRow("Elevation", RouteFormatting.elevation(viewModel.recording.elevationGainMeters), "arrow.up.right")
-                summaryRow("Heart Rate", heartRateLabel, "heart.fill")
-                summaryRow("Off Route", "\(viewModel.recording.offRouteEvents.count)", "location.slash")
+                    summaryRow("Elapsed", RouteFormatting.duration(viewModel.elapsedSeconds), "clock")
+                    summaryRow("Distance", RouteFormatting.distance(viewModel.recording.totalDistanceMeters), "ruler")
+                    summaryRow(
+                        speedMode.averageLabel,
+                        RouteFormatting.speedOrPace(viewModel.averageSpeedMetersPerSecond, mode: speedMode),
+                        "speedometer"
+                    )
+                    summaryRow("Elevation", RouteFormatting.elevation(viewModel.recording.elevationGainMeters), "arrow.up.right")
+                    summaryRow("Heart Rate", heartRateLabel, "heart.fill")
+                    summaryRow("Off Route", "\(viewModel.recording.offRouteEvents.count)", "location.slash")
 
-                if let route = viewModel.routePackage {
-                    OverviewView(viewModel: viewModel, compact: true)
-                        .frame(height: 100)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                    Text(route.name)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    if let route = viewModel.routePackage {
+                        OverviewView(viewModel: viewModel, compact: true)
+                            .frame(height: 100)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                        Text(route.name)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Button(role: .destructive) {
+                        viewModel.discardActivity()
+                    } label: {
+                        Text("Discard")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
                 }
-
-                Button(role: .destructive) {
-                    viewModel.discardActivity()
-                } label: {
-                    Text("Discard")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
+                .padding(.horizontal, Self.contentHorizontalPadding)
+                .padding(.top, 16)
+                .padding(.bottom, Self.floatingSaveClearance)
             }
-            .padding(.horizontal, Self.contentHorizontalPadding)
-            .padding(.top, 16)
-            .padding(.bottom, Self.floatingSaveClearance)
-        }
-        .overlay(alignment: .bottom) {
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
             saveButton
                 .padding(.horizontal, Self.contentHorizontalPadding)
-                .padding(.bottom, RouteAppearance.watchEdgeInset)
                 .ignoresSafeArea(edges: .bottom)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

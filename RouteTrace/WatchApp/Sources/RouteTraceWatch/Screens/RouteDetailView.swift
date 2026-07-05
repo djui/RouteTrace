@@ -14,6 +14,8 @@ struct RouteDetailView: View {
     @State private var showDeleteConfirm = false
     @State private var showDeleteMapConfirm = false
 
+    private static let floatingStartClearance: CGFloat = 72
+
     init(route: RoutePackage, activeViewModel: ActiveRouteViewModel) {
         self.route = route
         self.activeViewModel = activeViewModel
@@ -27,8 +29,9 @@ struct RouteDetailView: View {
 
             startRouteControl
                 .padding(.horizontal, 16)
+                .padding(.bottom, RouteAppearance.watchCornerClearance)
+                .ignoresSafeArea(edges: .bottom)
         }
-        .ignoresSafeArea(edges: .bottom)
         .navigationTitle(route.name)
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
@@ -96,7 +99,7 @@ struct RouteDetailView: View {
             }
         }
         .listSectionSpacing(8)
-        .padding(.bottom, 44)
+        .padding(.bottom, Self.floatingStartClearance)
     }
 
     private var offlineLabel: String {
