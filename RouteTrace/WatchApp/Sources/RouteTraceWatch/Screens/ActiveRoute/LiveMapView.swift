@@ -138,12 +138,9 @@ struct LiveMapView: View {
                     OutlinedRoutePolyline(coordinates: actual, color: .green)
                 }
 
-                if let snapshot = viewModel.navigationSnapshot,
-                   let cue = snapshot.nextCue,
-                   let distance = snapshot.distanceToNextCueMeters,
-                   distance <= 500 {
-                    Annotation("", coordinate: ActiveRouteMapOverlay.clLocation(cue.coordinate)) {
-                        TurnArrowMarker(kind: cue.kind, bearing: cue.bearingAfter)
+                if let display = viewModel.upcomingCueDisplay {
+                    Annotation("", coordinate: ActiveRouteMapOverlay.clLocation(display.cue.coordinate)) {
+                        TurnArrowMarker(kind: display.cue.kind, bearing: display.cue.bearingAfter)
                     }
                 }
 

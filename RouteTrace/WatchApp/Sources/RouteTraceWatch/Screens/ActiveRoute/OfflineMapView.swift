@@ -413,10 +413,8 @@ struct OfflineMapView: View {
         strokeProjectedPath(context: &context, coordinates: split.remaining, tile: tile, size: size, color: .blue)
         strokeProjectedPath(context: &context, coordinates: actual, tile: tile, size: size, color: .green)
 
-        if let snapshot = viewModel.navigationSnapshot,
-           let cue = snapshot.nextCue,
-           let distance = snapshot.distanceToNextCueMeters,
-           distance <= 500 {
+        if let display = viewModel.upcomingCueDisplay {
+            let cue = display.cue
             let pixel = MapMath.coordinateToPixel(
                 coordinate: cue.coordinate,
                 tileX: tile.x,

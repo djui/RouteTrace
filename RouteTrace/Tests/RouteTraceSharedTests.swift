@@ -72,6 +72,58 @@ final class RouteTraceSharedTests: XCTestCase {
         XCTAssertFalse(update!.isOffRoute)
     }
 
+    func testNavigationEnginePreviewUpdateDoesNotMutateTrack() throws {
+        let url = RouteTraceTestSupport.fixturesBundle.url(forResource: "simple_track", withExtension: "gpx")
+            ?? RouteTraceTestSupport.fixturesBundle.url(forResource: "simple_track", withExtension: "gpx", subdirectory: "Fixtures")
+        let resolvedURL = try XCTUnwrap(url)
+        let parsed = try GPXParser().parse(data: try Data(contentsOf: resolvedURL))
+        let package = RouteProcessor().makeRoutePackage(
+            from: parsed,
+            sourceFileName: "simple_track.gpx",
+            activityHint: .running
+        )
+        let engine = RouteNavigationEngine(routePackage: package)
+        let first = package.route[0]
+        let second = package.route[min(1, package.route.count - 1)]
+
+        let preview = engine.previewUpdate(
+            latitude: second.latitude,
+            longitude: second.longitude,
+            horizontalAccuracyMeters: 5,
+            speedMetersPerSecond: 2
+        )
+        XCTAssertNotNil(preview)
+        XCTAssertTrue(engine.gpsTrack.isEmpty)
+        XCTAssertTrue(engine.breadcrumb.isEmpty)
+
+        let update = engine.update(
+            latitude: first.latitude,
+            longitude: first.longitude,
+            horizontalAccuracyMeters: 5,
+            speedMetersPerSecond: 2
+        )
+        XCTAssertNotNil(update)
+        XCTAssertEqual(engine.gpsTrack.count, 1)
+    }
+
+    func testNavigationEngineInitialSnapshotAtRouteStart() throws {
+        let url = RouteTraceTestSupport.fixturesBundle.url(forResource: "simple_track", withExtension: "gpx")
+            ?? RouteTraceTestSupport.fixturesBundle.url(forResource: "simple_track", withExtension: "gpx", subdirectory: "Fixtures")
+        let resolvedURL = try XCTUnwrap(url)
+        let parsed = try GPXParser().parse(data: try Data(contentsOf: resolvedURL))
+        let package = RouteProcessor().makeRoutePackage(
+            from: parsed,
+            sourceFileName: "simple_track.gpx",
+            activityHint: .running
+        )
+        let engine = RouteNavigationEngine(routePackage: package)
+        let snapshot = engine.makeInitialSnapshot(routeId: package.id)
+
+        XCTAssertEqual(snapshot.progressDistanceMeters, 0, accuracy: 0.01)
+        XCTAssertEqual(snapshot.distanceRemainingMeters, package.distanceMeters, accuracy: 0.01)
+        XCTAssertNotNil(snapshot.nextCue)
+    }
+
     func testMapMathBearingDelta() {
         let delta = MapMath.bearingDelta(from: 350, to: 10)
         XCTAssertEqual(delta, 20, accuracy: 0.1)

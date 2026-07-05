@@ -176,13 +176,6 @@ struct ActiveRouteChrome<Content: View>: View {
                 )
                 .padding(.top, RouteAppearance.watchMapDistanceTopInset)
             }
-            .overlay(alignment: .topLeading) {
-                if viewModel.showsWeakGPSIndicator, let label = viewModel.gpsStatusLabel {
-                    GPSStatusPill(label: label)
-                        .padding(.leading, RouteAppearance.watchCornerClearance)
-                        .padding(.top, RouteAppearance.watchEdgeInset)
-                }
-            }
             .overlay(alignment: .topTrailing) {
                 ActiveRouteStatusBar(
                     showActivityIcon: !showsSystemWorkoutIndicator,
@@ -195,15 +188,17 @@ struct ActiveRouteChrome<Content: View>: View {
             }
             .overlay(alignment: .bottom) {
                 VStack(spacing: 2) {
-                    if let snapshot = viewModel.navigationSnapshot,
-                       let cue = snapshot.nextCue,
-                       let distance = snapshot.distanceToNextCueMeters,
-                       distance <= 500 {
+                    if let display = viewModel.upcomingCueDisplay {
                         NavigationGuidanceBar(
-                            cue: cue,
-                            distanceMeters: distance,
-                            isOffRoute: snapshot.isOffRoute
+                            cue: display.cue,
+                            distanceMeters: display.distanceMeters,
+                            isOffRoute: display.isOffRoute
                         )
+                    }
+
+                    if viewModel.showsWeakGPSIndicator, let label = viewModel.gpsStatusLabel {
+                        GPSStatusPill(label: label)
+                            .frame(maxWidth: .infinity)
                     }
 
                     ActiveRoutePageDots(selectedPage: uiState.selectedPage)
@@ -217,10 +212,6 @@ struct ActiveRouteChrome<Content: View>: View {
     private var standardChromeOverlay: some View {
         VStack(spacing: 0) {
             HStack(alignment: .top) {
-                if viewModel.showsWeakGPSIndicator, let label = viewModel.gpsStatusLabel {
-                    GPSStatusPill(label: label)
-                }
-
                 Spacer(minLength: 0)
 
                 ActiveRouteStatusBar(

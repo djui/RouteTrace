@@ -52,6 +52,18 @@ final class ActiveRouteViewModel {
         }
     }
 
+    static let upcomingCueDisplayDistanceMeters = 500.0
+
+    var upcomingCueDisplay: (cue: RouteCue, distanceMeters: Double, isOffRoute: Bool)? {
+        guard let snapshot = navigationSnapshot,
+              let cue = snapshot.nextCue,
+              let distance = snapshot.distanceToNextCueMeters,
+              distance <= Self.upcomingCueDisplayDistanceMeters else {
+            return nil
+        }
+        return (cue, distance, snapshot.isOffRoute)
+    }
+
     let locationService = LocationTrackingService()
     let workoutService = WorkoutService()
 
@@ -145,6 +157,7 @@ final class ActiveRouteViewModel {
             locationQualityFilter.reset()
             previewCoordinate = nil
             gpsAcquisitionState = .acquiring
+            navigationSnapshot = engine.makeInitialSnapshot(routeId: route.id)
         }
 
         phase = persisted.phase == "paused" ? .paused : .active
@@ -237,6 +250,7 @@ final class ActiveRouteViewModel {
         self.activityKind = activityKind
         self.navigationEngine = RouteNavigationEngine(routePackage: route)
         displayCoordinateSmoother.reset()
+        navigationSnapshot = navigationEngine?.makeInitialSnapshot(routeId: route.id)
         self.elapsedSeconds = 0
         self.lastElevationMeters = nil
         self.heartRateSamples = []
@@ -465,6 +479,7 @@ final class ActiveRouteViewModel {
         case .previewOnly:
             updatePreviewCoordinate(from: sample)
             gpsAcquisitionState = .acquiring
+            applyPreviewNavigation(from: sample, route: route, engine: engine)
             return
         case .accepted:
             updatePreviewCoordinate(from: sample)
@@ -718,6 +733,37 @@ final class ActiveRouteViewModel {
         previewCoordinate = GeoCoordinate(
             latitude: sample.coordinate.latitude,
             longitude: sample.coordinate.longitude
+        )
+    }
+
+    private func applyPreviewNavigation(
+        from sample: LocationSample,
+        route: RoutePackage,
+        engine: RouteNavigationEngine
+    ) {
+        guard let update = engine.previewUpdate(
+            latitude: sample.coordinate.latitude,
+            longitude: sample.coordinate.longitude,
+            horizontalAccuracyMeters: sample.horizontalAccuracyMeters,
+            speedMetersPerSecond: sample.speedMetersPerSecond
+        ) else { return }
+
+        let coordinate = GeoCoordinate(
+            latitude: sample.coordinate.latitude,
+            longitude: sample.coordinate.longitude
+        )
+        let displayCoordinate = displayCoordinateSmoother.coordinate(
+            raw: coordinate,
+            projected: update.projectedCoordinate,
+            horizontalAccuracyMeters: sample.horizontalAccuracyMeters,
+            isOffRoute: update.isOffRoute,
+            recordingAccuracyThresholdMeters: currentBatteryMode.gpsRecordingAccuracyMeters
+        )
+        navigationSnapshot = engine.makeSnapshot(
+            routeId: route.id,
+            coordinate: displayCoordinate,
+            speed: sample.speedMetersPerSecond,
+            update: update
         )
     }
 }

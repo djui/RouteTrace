@@ -67,16 +67,77 @@ public final class RouteNavigationEngine: @unchecked Sendable {
         offRouteUpdateCount = 0
     }
 
+    public func previewUpdate(
+        latitude: Double,
+        longitude: Double,
+        horizontalAccuracyMeters: Double,
+        speedMetersPerSecond: Double?
+    ) -> RouteNavigationUpdate? {
+        computeUpdate(
+            latitude: latitude,
+            longitude: longitude,
+            horizontalAccuracyMeters: horizontalAccuracyMeters,
+            persist: false
+        )
+    }
+
     public func update(
         latitude: Double,
         longitude: Double,
         horizontalAccuracyMeters: Double,
         speedMetersPerSecond: Double?
     ) -> RouteNavigationUpdate? {
+        computeUpdate(
+            latitude: latitude,
+            longitude: longitude,
+            horizontalAccuracyMeters: horizontalAccuracyMeters,
+            persist: true
+        )
+    }
+
+    public func makeInitialSnapshot(routeId: UUID) -> NavigationSnapshot {
+        let progress = lastProgressMeters
+        let nextCue = cues.first { $0.distanceFromStartMeters > progress + 5 }
+        let distanceToCue = nextCue.map { max(0, $0.distanceFromStartMeters - progress) }
+        let projectedCoordinate: GeoCoordinate
+        if let first = route.first {
+            projectedCoordinate = GeoCoordinate(latitude: first.latitude, longitude: first.longitude)
+        } else {
+            projectedCoordinate = GeoCoordinate(latitude: 0, longitude: 0)
+        }
+
+        let update = RouteNavigationUpdate(
+            progressDistanceMeters: progress,
+            distanceRemainingMeters: max(0, totalDistanceMeters - progress),
+            offRouteDistanceMeters: 0,
+            isOffRoute: false,
+            isCriticallyOffRoute: false,
+            nextCue: nextCue,
+            distanceToNextCueMeters: distanceToCue,
+            segmentIndex: lastSegmentIndex,
+            projectedCoordinate: projectedCoordinate
+        )
+
+        return makeSnapshot(
+            routeId: routeId,
+            coordinate: nil,
+            speed: nil,
+            update: update
+        )
+    }
+
+    private func computeUpdate(
+        latitude: Double,
+        longitude: Double,
+        horizontalAccuracyMeters: Double,
+        persist: Bool
+    ) -> RouteNavigationUpdate? {
         guard MapMath.isValidCoordinate(latitude: latitude, longitude: longitude) else { return nil }
 
         let location = GeoCoordinate(latitude: latitude, longitude: longitude)
-        actualTrack.append(location)
+        if persist {
+            actualTrack.append(location)
+        }
 
         let searchWindow = offRouteUpdateCount >= Self.offRouteUpdatesBeforeWidening
             ? Self.widenedSearchWindow
@@ -92,7 +153,7 @@ public final class RouteNavigationEngine: @unchecked Sendable {
         let accuracyAdjustedOffRoute = max(0, nearest.distanceMeters - max(0, horizontalAccuracyMeters - 10))
         let progress = max(lastProgressMeters, nearest.distanceAlongRouteMeters)
 
-        if nearest.segmentIndex >= lastSegmentIndex {
+        if persist, nearest.segmentIndex >= lastSegmentIndex {
             lastSegmentIndex = nearest.segmentIndex
             lastProgressMeters = progress
             completedTrack.append(nearest.projectedCoordinate)
@@ -105,10 +166,12 @@ public final class RouteNavigationEngine: @unchecked Sendable {
         let isOffRoute = accuracyAdjustedOffRoute > warningThreshold
         let isCritical = accuracyAdjustedOffRoute > criticalThreshold
 
-        if isOffRoute {
-            offRouteUpdateCount += 1
-        } else {
-            offRouteUpdateCount = 0
+        if persist {
+            if isOffRoute {
+                offRouteUpdateCount += 1
+            } else {
+                offRouteUpdateCount = 0
+            }
         }
 
         let nextCue = cues.first { $0.distanceFromStartMeters > progress + 5 }
