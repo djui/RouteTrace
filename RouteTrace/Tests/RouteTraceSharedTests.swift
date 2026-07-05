@@ -247,4 +247,170 @@ final class RouteTraceSharedTests: XCTestCase {
         )
         XCTAssertEqual(speed ?? 0, 5, accuracy: 0.01)
     }
+
+    func testLocationQualityFilterRejectsStaleFix() {
+        var filter = LocationQualityFilter()
+        let reference = Date(timeIntervalSince1970: 1_700_000_000)
+        let input = LocationQualityInput(
+            latitude: 48.8566,
+            longitude: 2.3522,
+            horizontalAccuracyMeters: 5,
+            timestamp: reference.addingTimeInterval(-10)
+        )
+
+        let outcome = filter.evaluate(
+            input: input,
+            activityKind: .running,
+            batteryMode: .normal,
+            mode: .recording,
+            referenceDate: reference
+        )
+
+        guard case .rejected(.staleFix) = outcome else {
+            return XCTFail("Expected stale fix rejection, got \(outcome)")
+        }
+    }
+
+    func testLocationQualityFilterRejectsPoorAccuracyDuringStabilization() {
+        var filter = LocationQualityFilter()
+        let timestamp = Date(timeIntervalSince1970: 1_700_000_000)
+        let input = LocationQualityInput(
+            latitude: 48.8566,
+            longitude: 2.3522,
+            horizontalAccuracyMeters: 80,
+            timestamp: timestamp
+        )
+
+        let outcome = filter.evaluate(
+            input: input,
+            activityKind: .running,
+            batteryMode: .normal,
+            mode: .recording,
+            referenceDate: timestamp
+        )
+
+        guard case .rejected(.poorAccuracy) = outcome else {
+            return XCTFail("Expected poor accuracy rejection, got \(outcome)")
+        }
+    }
+
+    func testLocationQualityFilterRequiresConsecutiveGoodFixes() {
+        var filter = LocationQualityFilter()
+        let base = Date(timeIntervalSince1970: 1_700_000_000)
+
+        let first = LocationQualityInput(
+            latitude: 48.8566,
+            longitude: 2.3522,
+            horizontalAccuracyMeters: 5,
+            timestamp: base
+        )
+        let second = LocationQualityInput(
+            latitude: 48.8567,
+            longitude: 2.3523,
+            horizontalAccuracyMeters: 5,
+            timestamp: base.addingTimeInterval(2)
+        )
+
+        XCTAssertEqual(
+            filter.evaluate(input: first, activityKind: .running, batteryMode: .normal, mode: .recording, referenceDate: base.addingTimeInterval(2)),
+            .previewOnly
+        )
+        XCTAssertEqual(
+            filter.evaluate(input: second, activityKind: .running, batteryMode: .normal, mode: .recording, referenceDate: base.addingTimeInterval(2)),
+            .accepted
+        )
+        XCTAssertTrue(filter.hasStabilized)
+    }
+
+    func testLocationQualityFilterRejectsSpatialJumpOutlier() {
+        var filter = LocationQualityFilter()
+        let base = Date(timeIntervalSince1970: 1_700_000_000)
+
+        _ = filter.evaluate(
+            input: LocationQualityInput(
+                latitude: 48.8566,
+                longitude: 2.3522,
+                horizontalAccuracyMeters: 5,
+                timestamp: base
+            ),
+            activityKind: .running,
+            batteryMode: .normal,
+            mode: .recording,
+            referenceDate: base
+        )
+        _ = filter.evaluate(
+            input: LocationQualityInput(
+                latitude: 48.8567,
+                longitude: 2.3523,
+                horizontalAccuracyMeters: 5,
+                timestamp: base.addingTimeInterval(2)
+            ),
+            activityKind: .running,
+            batteryMode: .normal,
+            mode: .recording,
+            referenceDate: base.addingTimeInterval(2)
+        )
+
+        let outlier = LocationQualityInput(
+            latitude: 48.8700,
+            longitude: 2.3700,
+            horizontalAccuracyMeters: 5,
+            timestamp: base.addingTimeInterval(7)
+        )
+        let outcome = filter.evaluate(
+            input: outlier,
+            activityKind: .running,
+            batteryMode: .normal,
+            mode: .recording,
+            referenceDate: base.addingTimeInterval(7)
+        )
+
+        guard case .rejected(.excessiveSpeed) = outcome else {
+            return XCTFail("Expected excessive speed rejection, got \(outcome)")
+        }
+    }
+
+    func testLocationQualityFilterWarmupReadyUsesStabilizationAccuracy() {
+        let filter = LocationQualityFilter()
+        let timestamp = Date(timeIntervalSince1970: 1_700_000_000)
+        let ready = LocationQualityInput(
+            latitude: 48.8566,
+            longitude: 2.3522,
+            horizontalAccuracyMeters: 20,
+            timestamp: timestamp
+        )
+        let weak = LocationQualityInput(
+            latitude: 48.8566,
+            longitude: 2.3522,
+            horizontalAccuracyMeters: 40,
+            timestamp: timestamp
+        )
+
+        XCTAssertTrue(filter.isWarmupReady(input: ready, activityKind: .running, referenceDate: timestamp))
+        XCTAssertFalse(filter.isWarmupReady(input: weak, activityKind: .running, referenceDate: timestamp))
+    }
+
+    func testLocationQualityFilterRestoreStartsStabilized() {
+        var filter = LocationQualityFilter()
+        let seed = LocationQualityInput(
+            latitude: 48.8566,
+            longitude: 2.3522,
+            horizontalAccuracyMeters: 5,
+            timestamp: Date(timeIntervalSince1970: 1_700_000_000)
+        )
+        filter.reset(startingStabilized: true, seed: seed)
+
+        XCTAssertTrue(filter.hasStabilized)
+
+        let next = LocationQualityInput(
+            latitude: 48.8568,
+            longitude: 2.3524,
+            horizontalAccuracyMeters: 5,
+            timestamp: Date(timeIntervalSince1970: 1_700_000_010)
+        )
+        XCTAssertEqual(
+            filter.evaluate(input: next, activityKind: .running, batteryMode: .normal, mode: .recording),
+            .accepted
+        )
+    }
 }

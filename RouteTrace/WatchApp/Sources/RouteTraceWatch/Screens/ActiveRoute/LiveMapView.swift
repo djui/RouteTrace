@@ -30,10 +30,10 @@ struct LiveMapView: View {
 
     var body: some View {
         mapContent
-        .onChange(of: viewModel.navigationSnapshot?.currentCoordinate?.latitude) { _, _ in
+        .onChange(of: viewModel.displayCoordinate?.latitude) { _, _ in
             followLocationIfNeeded()
         }
-        .onChange(of: viewModel.navigationSnapshot?.currentCoordinate?.longitude) { _, _ in
+        .onChange(of: viewModel.displayCoordinate?.longitude) { _, _ in
             followLocationIfNeeded()
         }
         .onChange(of: uiState.mapSpan) { _, _ in
@@ -122,7 +122,7 @@ struct LiveMapView: View {
                     }
                 }
 
-                if let coordinate = viewModel.navigationSnapshot?.currentCoordinate {
+                if let coordinate = viewModel.displayCoordinate {
                     Annotation("", coordinate: ActiveRouteMapOverlay.clLocation(coordinate)) {
                         UserHeadingMarker(headingDegrees: headingDegrees)
                     }
@@ -170,7 +170,7 @@ struct LiveMapView: View {
 
     func recenterIfNeeded() {
         guard !isFocused else { return }
-        guard let coordinate = viewModel.navigationSnapshot?.currentCoordinate else { return }
+        guard let coordinate = viewModel.displayCoordinate else { return }
 
         let center = ActiveRouteMapOverlay.clLocation(coordinate)
         if preferences.mapOrientation == .headingUp,

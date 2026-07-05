@@ -79,6 +79,16 @@ struct RouteDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             routeStore.lastSelectedRouteID = route.id
+            activeViewModel.beginGPSWarmup(
+                preferences: preferences,
+                activityKind: selectedActivityKind
+            )
+        }
+        .onDisappear {
+            activeViewModel.endGPSWarmup()
+        }
+        .onChange(of: selectedActivityKind) { _, kind in
+            activeViewModel.setWarmupActivityKind(kind)
         }
         .confirmationDialog("Delete this route?", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
             Button("Delete", role: .destructive) {
@@ -111,15 +121,52 @@ struct RouteDetailView: View {
 
     @ViewBuilder
     private var startRouteControl: some View {
-        Button {
-            startRoute()
-        } label: {
-            Text(isStarting ? "Starting…" : "Start")
-                .font(.headline)
-                .frame(maxWidth: .infinity)
+        VStack(spacing: 6) {
+            if let gpsLabel = gpsWarmupLabel {
+                Label(gpsLabel, systemImage: gpsWarmupIcon)
+                    .font(.caption2)
+                    .foregroundStyle(gpsWarmupColor)
+            }
+
+            Button {
+                startRoute()
+            } label: {
+                Text(isStarting ? "Starting…" : "Start")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
+            }
+            .routeGlassButton(prominent: true, tint: .green)
+            .disabled(isStarting)
         }
-        .routeGlassButton(prominent: true, tint: .green)
-        .disabled(isStarting)
+    }
+
+    private var gpsWarmupLabel: String? {
+        switch activeViewModel.gpsAcquisitionState {
+        case .warmingUp:
+            return "Acquiring GPS…"
+        case .ready where !activeViewModel.isActive:
+            return "GPS ready"
+        default:
+            return nil
+        }
+    }
+
+    private var gpsWarmupIcon: String {
+        switch activeViewModel.gpsAcquisitionState {
+        case .ready:
+            return "location.fill"
+        default:
+            return "location.slash"
+        }
+    }
+
+    private var gpsWarmupColor: Color {
+        switch activeViewModel.gpsAcquisitionState {
+        case .ready:
+            return .green
+        default:
+            return .orange
+        }
     }
 
     private func sectionHeader(_ title: String) -> some View {
