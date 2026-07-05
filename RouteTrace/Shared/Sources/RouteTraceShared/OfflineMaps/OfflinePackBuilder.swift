@@ -165,7 +165,8 @@ public final class OfflinePackBuilder {
             simplifiedPointCount: package.simplifiedPointCount,
             route: package.route,
             cues: package.cues,
-            offlineMapManifest: manifest
+            offlineMapManifest: manifest,
+            navigationWarning: package.navigationWarning
         )
     }
 
