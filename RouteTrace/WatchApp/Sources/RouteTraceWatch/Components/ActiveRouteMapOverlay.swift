@@ -220,7 +220,7 @@ struct CueSymbolMarker: View {
                     .font(.system(size: symbolSize, weight: .black))
                     .foregroundStyle(foregroundColor)
                     .padding(markerSize * 0.2)
-                    .routeOverlayBackground(in: Circle())
+                    .routeMapOverlayBackground(in: Circle())
                     .overlay {
                         Circle()
                             .stroke(.white, lineWidth: 2)

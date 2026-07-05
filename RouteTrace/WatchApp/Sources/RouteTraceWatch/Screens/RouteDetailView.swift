@@ -49,8 +49,8 @@ struct RouteDetailView: View {
                         Button(role: .destructive) {
                             showDeleteMapConfirm = true
                         } label: {
-                            Label("Delete Offline Map", systemImage: "map")
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                            Text("Delete Offline Map")
+                                .frame(maxWidth: .infinity)
                         }
                         .routeGlassButton(tint: .red)
                     }
@@ -58,8 +58,8 @@ struct RouteDetailView: View {
                     Button(role: .destructive) {
                         showDeleteConfirm = true
                     } label: {
-                        Label("Delete Route", systemImage: "trash")
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Text("Delete Route")
+                            .frame(maxWidth: .infinity)
                     }
                     .routeGlassButton(tint: .red)
                 }

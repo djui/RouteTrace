@@ -8,6 +8,7 @@ struct RouteMapView: View {
 
     @Environment(WatchRouteStore.self) private var routeStore
 
+    @FocusState private var mapCrownFocused: Bool
     @State private var cameraPosition: MapCameraPosition = .automatic
 
     private var isFocused: Bool {
@@ -41,7 +42,13 @@ struct RouteMapView: View {
             ActiveRouteDimmedSummary(viewModel: viewModel)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear { fitRoute() }
+        .onAppear {
+            fitRoute()
+            requestMapCrownFocus()
+        }
+        .onChange(of: isFocused) { _, _ in
+            requestMapCrownFocus()
+        }
     }
 
     @ViewBuilder
@@ -61,15 +68,8 @@ struct RouteMapView: View {
             .mapStyle(.standard(elevation: .flat, emphasis: .muted))
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .focusable(isFocused)
-            .digitalCrownRotation(
-                $uiState.mapSpan,
-                from: 0.004,
-                through: 0.08,
-                by: 0.001,
-                sensitivity: .medium,
-                isContinuous: false,
-                isHapticFeedbackEnabled: isFocused
-            )
+            .focused($mapCrownFocused)
+            .modifier(RoutePreviewCrownInteraction(isEnabled: isFocused, mapSpan: $uiState.mapSpan))
             .onChange(of: uiState.mapSpan) { _, span in
                 guard isFocused, let route = viewModel.routePackage else { return }
                 let box = route.boundingBox
@@ -98,7 +98,7 @@ struct RouteMapView: View {
     }
 
     private var focusHint: some View {
-        RouteGlassIconButton(systemName: "scope") {
+        RouteMapIconButton(systemName: "scope") {
             uiState.enterMapFocus()
         }
     }
@@ -114,5 +114,41 @@ struct RouteMapView: View {
                 span: MKCoordinateSpan(latitudeDelta: span, longitudeDelta: span)
             )
         )
+    }
+
+    private func requestMapCrownFocus() {
+        guard isFocused else {
+            mapCrownFocused = false
+            return
+        }
+
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(100))
+            if isFocused {
+                mapCrownFocused = true
+            }
+        }
+    }
+}
+
+private struct RoutePreviewCrownInteraction: ViewModifier {
+    let isEnabled: Bool
+    @Binding var mapSpan: Double
+
+    func body(content: Content) -> some View {
+        if isEnabled {
+            content
+                .digitalCrownRotation(
+                    $mapSpan,
+                    from: 0.004,
+                    through: 0.08,
+                    by: 0.001,
+                    sensitivity: .medium,
+                    isContinuous: false,
+                    isHapticFeedbackEnabled: true
+                )
+        } else {
+            content
+        }
     }
 }

@@ -91,7 +91,7 @@ struct OfflineMapView: View {
                 Text(loadError)
                     .font(.caption2)
                     .padding(4)
-                    .routeOverlayBackground(in: Capsule())
+                    .routeMapOverlayBackground(in: Capsule())
             }
         }
 
@@ -147,7 +147,7 @@ struct OfflineMapView: View {
             .font(.caption2)
             .padding(6)
             .foregroundStyle(.white)
-            .glassEffect(RouteAppearance.overlayGlass.tint(.orange), in: .capsule)
+            .glassEffect(RouteAppearance.mapOverlayGlass.tint(.orange), in: .capsule)
             .padding(.top, 4)
     }
 

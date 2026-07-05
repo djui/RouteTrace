@@ -126,38 +126,42 @@ struct ActiveRouteChrome<Content: View>: View {
             } else if !uiState.isMapFocus && !isLuminanceReduced {
                 standardChromeOverlay
             }
+
+            if uiState.isMapFocus {
+                mapFocusExitOverlay
+            }
         }
+    }
+
+    private var mapFocusExitOverlay: some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .top) {
+                RouteMapIconButton(systemName: "xmark") {
+                    uiState.exitMapFocus()
+                }
+
+                Spacer(minLength: 0)
+            }
+            .padding(.leading, RouteAppearance.watchMapFocusControlInset)
+            .padding(.top, RouteAppearance.watchMapFocusControlInset)
+
+            Spacer(minLength: 0)
+                .allowsHitTesting(false)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .allowsHitTesting(true)
     }
 
     private var liveMapBrowseOverlays: some View {
         Color.clear
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .overlay {
-                GlassEffectContainer(spacing: 12) {
-                    ZStack {
-                        RouteDistanceBubble(
-                            covered: RouteFormatting.distance(viewModel.navigationSnapshot?.progressDistanceMeters ?? 0),
-                            remaining: RouteFormatting.distance(viewModel.navigationSnapshot?.distanceRemainingMeters ?? 0)
-                        )
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                        .padding(.top, RouteAppearance.watchMapDistanceTopInset)
-
-                        if let snapshot = viewModel.navigationSnapshot,
-                           let cue = snapshot.nextCue,
-                           let distance = snapshot.distanceToNextCueMeters,
-                           distance <= 500 {
-                            NavigationGuidanceBar(
-                                cue: cue,
-                                distanceMeters: distance,
-                                isOffRoute: snapshot.isOffRoute
-                            )
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                            .padding(.horizontal, RouteAppearance.watchOverlayHorizontalInset)
-                            .padding(.bottom, 18)
-                        }
-                    }
-                }
-                .allowsHitTesting(false)
+            .allowsHitTesting(false)
+            .overlay(alignment: .top) {
+                RouteDistanceBubble(
+                    covered: RouteFormatting.distance(viewModel.navigationSnapshot?.progressDistanceMeters ?? 0),
+                    remaining: RouteFormatting.distance(viewModel.navigationSnapshot?.distanceRemainingMeters ?? 0)
+                )
+                .padding(.top, RouteAppearance.watchMapDistanceTopInset)
             }
             .overlay(alignment: .topTrailing) {
                 ActiveRouteStatusBar(
@@ -169,9 +173,22 @@ struct ActiveRouteChrome<Content: View>: View {
                 .padding(.top, RouteAppearance.watchEdgeInset)
             }
             .overlay(alignment: .bottom) {
-                ActiveRoutePageDots(selectedPage: uiState.selectedPage)
-                    .padding(.horizontal, RouteAppearance.watchOverlayHorizontalInset)
-                    .padding(.bottom, RouteAppearance.watchEdgeInset)
+                VStack(spacing: 2) {
+                    if let snapshot = viewModel.navigationSnapshot,
+                       let cue = snapshot.nextCue,
+                       let distance = snapshot.distanceToNextCueMeters,
+                       distance <= 500 {
+                        NavigationGuidanceBar(
+                            cue: cue,
+                            distanceMeters: distance,
+                            isOffRoute: snapshot.isOffRoute
+                        )
+                    }
+
+                    ActiveRoutePageDots(selectedPage: uiState.selectedPage)
+                }
+                .padding(.horizontal, RouteAppearance.watchOverlayHorizontalInset)
+                .padding(.bottom, RouteAppearance.watchEdgeInset)
             }
             .ignoresSafeArea(edges: .vertical)
     }
@@ -218,7 +235,7 @@ struct OfflineStatusPill: View {
             .foregroundStyle(RouteAppearance.overlayText)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
-            .routeOverlayBackground(in: Capsule())
+            .routeMapOverlayBackground(in: Capsule())
     }
 }
 
@@ -233,7 +250,7 @@ struct RouteDistanceBubble: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 4)
-        .routeOverlayBackground(in: Capsule())
+        .routeMapOverlayBackground(in: Capsule())
     }
 
     private func metricRow(symbol: String, value: String) -> some View {
@@ -267,6 +284,6 @@ struct RouteMetricInline: View {
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 5)
-        .routeOverlayBackground(in: Capsule())
+        .routeMapOverlayBackground(in: Capsule())
     }
 }

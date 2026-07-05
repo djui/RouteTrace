@@ -68,10 +68,6 @@ struct LiveMapView: View {
                         }
                         .allowsHitTesting(true)
                 }
-
-                if isFocused {
-                    mapFocusExitButton
-                }
             }
         } dimmed: {
             ActiveRouteDimmedSummary(viewModel: viewModel)
@@ -102,27 +98,6 @@ struct LiveMapView: View {
             hapticFeedback: isFocused,
             mapSpan: $uiState.mapSpan
         ))
-    }
-
-    private var mapFocusExitButton: some View {
-        VStack(spacing: 0) {
-            HStack(alignment: .top) {
-                RouteGlassIconButton(systemName: "xmark") {
-                    uiState.exitMapFocus()
-                }
-                .frame(minWidth: 36, minHeight: 36)
-
-                Spacer(minLength: 0)
-            }
-            .padding(.leading, RouteAppearance.watchCornerClearance)
-            .padding(.top, RouteAppearance.watchCornerClearance)
-
-            Spacer(minLength: 0)
-                .allowsHitTesting(false)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .allowsHitTesting(true)
-        .zIndex(10)
     }
 
     private var mapLayer: some View {
