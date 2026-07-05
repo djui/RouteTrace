@@ -45,11 +45,15 @@ public struct WatchActivityWidgetPayload: Codable, Sendable {
 }
 
 public enum WatchWidgetStateWriter {
+    private static var lastTimelineReloadAt: Date = .distantPast
+
     public static func writeSnapshot(
         _ snapshot: NavigationSnapshot,
         routeName: String,
         elapsedSeconds: TimeInterval,
-        isPaused: Bool
+        isPaused: Bool,
+        minReloadInterval: TimeInterval = 15,
+        forceTimelineReload: Bool = false
     ) {
         let suite = UserDefaults(suiteName: WatchAppConstants.appGroupIdentifier) ?? .standard
         if let data = try? RouteTracePayloadCoding.encode(snapshot) {
@@ -70,14 +74,17 @@ public enum WatchWidgetStateWriter {
         if let data = try? RouteTracePayloadCoding.encode(payload) {
             suite.set(data, forKey: WatchAppConstants.activityStateUserDefaultsKey)
         }
-        reloadWidgetTimelines()
+        reloadWidgetTimelinesIfNeeded(
+            minInterval: minReloadInterval,
+            force: forceTimelineReload
+        )
     }
 
     public static func clear() {
         let suite = UserDefaults(suiteName: WatchAppConstants.appGroupIdentifier) ?? .standard
         suite.removeObject(forKey: WatchAppConstants.snapshotUserDefaultsKey)
         suite.removeObject(forKey: WatchAppConstants.activityStateUserDefaultsKey)
-        reloadWidgetTimelines()
+        reloadWidgetTimelinesIfNeeded(minInterval: 0, force: true)
     }
 
     public static func readWidgetPayload() -> WatchActivityWidgetPayload? {
@@ -86,7 +93,10 @@ public enum WatchWidgetStateWriter {
         return try? RouteTracePayloadCoding.decode(WatchActivityWidgetPayload.self, from: data)
     }
 
-    private static func reloadWidgetTimelines() {
+    private static func reloadWidgetTimelinesIfNeeded(minInterval: TimeInterval, force: Bool) {
+        let now = Date()
+        guard force || now.timeIntervalSince(lastTimelineReloadAt) >= minInterval else { return }
+        lastTimelineReloadAt = now
         #if canImport(WidgetKit)
         WidgetCenter.shared.reloadTimelines(ofKind: WatchAppConstants.widgetKind)
         #endif

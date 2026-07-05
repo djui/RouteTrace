@@ -18,14 +18,37 @@ struct LiveMapView: View {
         uiState.isMapFocus
     }
 
+    private var isMapVisible: Bool {
+        uiState.selectedPage == .liveMap || isFocused
+    }
+
     private var crownEnabled: Bool {
         uiState.isMapFocus || (uiState.selectedPage == .liveMap && !uiState.isMapFocus)
     }
 
-    private var usesOfflineTiles: Bool {
+    private var batteryPolicy: BatteryModePolicy {
+        BatteryModePolicy.policy(userMode: preferences.batteryMode)
+    }
+
+    private var offlinePackAvailable: Bool {
         guard let route = viewModel.routePackage else { return false }
         return (route.offlineStatus == .ready || route.offlineStatus == .partial)
             && routeStore.tileStore(for: route.id) != nil
+    }
+
+    private var usesRouteOnly: Bool {
+        preferences.mapDisplayMode == .routeOnly
+    }
+
+    private var usesOfflineTiles: Bool {
+        switch preferences.mapDisplayMode {
+        case .routeOnly:
+            return false
+        case .onlineNative:
+            return false
+        case .offlineCorridor:
+            return offlinePackAvailable
+        }
     }
 
     var body: some View {
@@ -78,7 +101,9 @@ struct LiveMapView: View {
     @ViewBuilder
     private var mapSurface: some View {
         Group {
-            if usesOfflineTiles {
+            if usesRouteOnly {
+                RouteOnlyMapView(viewModel: viewModel, uiState: uiState)
+            } else if usesOfflineTiles {
                 OfflineMapView(
                     viewModel: viewModel,
                     uiState: uiState,
@@ -91,10 +116,10 @@ struct LiveMapView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .focusable(crownEnabled)
+        .focusable(crownEnabled && !usesRouteOnly)
         .focused($mapCrownFocused)
         .modifier(MapCrownInteraction(
-            isEnabled: crownEnabled,
+            isEnabled: crownEnabled && !usesRouteOnly,
             hapticFeedback: isFocused,
             mapSpan: $uiState.mapSpan
         ))
@@ -143,14 +168,14 @@ struct LiveMapView: View {
     }
 
     private func requestMapCrownFocus() {
-        guard crownEnabled else {
+        guard crownEnabled, !usesRouteOnly else {
             mapCrownFocused = false
             return
         }
 
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(100))
-            if crownEnabled {
+            if crownEnabled, !usesRouteOnly {
                 mapCrownFocused = true
             }
         }
@@ -164,16 +189,30 @@ struct LiveMapView: View {
 
     private func followLocationIfNeeded() {
         guard !isFocused else { return }
-        offlineRecenterToken += 1
         recenterIfNeeded()
     }
 
     func recenterIfNeeded() {
         guard !isFocused else { return }
         guard let coordinate = viewModel.displayCoordinate else { return }
+        guard preferences.mapFollowMode else { return }
+
+        let policy = batteryPolicy.displayUpdatePolicy
+        guard viewModel.displayUpdateCoordinator.shouldRecenter(
+            policy: policy,
+            coordinate: coordinate,
+            isMapVisible: isMapVisible,
+            followEnabled: preferences.mapFollowMode
+        ) else {
+            return
+        }
+
+        viewModel.displayUpdateCoordinator.recordRecenter(at: coordinate)
+        offlineRecenterToken += 1
 
         let center = ActiveRouteMapOverlay.clLocation(coordinate)
-        if preferences.mapOrientation == .headingUp,
+        if batteryPolicy.allowsHeadingUpRotation,
+           preferences.mapOrientation == .headingUp,
            let course = viewModel.locationService.lastSample?.courseDegrees {
             cameraPosition = .camera(
                 MapCamera(

@@ -536,4 +536,59 @@ final class RouteTraceSharedTests: XCTestCase {
         XCTAssertNotNil(rejoinUpdate)
         XCTAssertGreaterThanOrEqual(rejoinUpdate?.segmentIndex ?? 0, 20)
     }
+
+    func testBatteryModePolicyEffectiveLowPowerModeElevatesNormalToSaver() {
+        XCTAssertEqual(
+            BatteryModePolicy.effective(userMode: .normal, lowPowerModeEnabled: true),
+            .saver
+        )
+        XCTAssertEqual(
+            BatteryModePolicy.effective(userMode: .ultraSaver, lowPowerModeEnabled: true),
+            .ultraSaver
+        )
+    }
+
+    func testBatteryModePolicyIntervalsIncreaseWithSaverModes() {
+        let normal = BatteryModePolicy(mode: .normal)
+        let saver = BatteryModePolicy(mode: .saver)
+        let ultra = BatteryModePolicy(mode: .ultraSaver)
+
+        XCTAssertLessThan(normal.widgetReloadMinInterval, saver.widgetReloadMinInterval)
+        XCTAssertLessThan(saver.widgetReloadMinInterval, ultra.widgetReloadMinInterval)
+        XCTAssertLessThan(normal.persistenceMinInterval, saver.persistenceMinInterval)
+        XCTAssertLessThan(saver.persistenceMinInterval, ultra.persistenceMinInterval)
+    }
+
+    @MainActor
+    func testDisplayUpdateCoordinatorThrottlesRecenters() {
+        let coordinator = DisplayUpdateCoordinator()
+        let policy = BatteryModePolicy(mode: .saver).displayUpdatePolicy
+        let first = GeoCoordinate(latitude: 48.8566, longitude: 2.3522)
+        let nearby = GeoCoordinate(latitude: 48.8567, longitude: 2.3523)
+
+        XCTAssertTrue(
+            coordinator.shouldRecenter(
+                policy: policy,
+                coordinate: first,
+                isMapVisible: true,
+                followEnabled: true
+            )
+        )
+        coordinator.recordRecenter(at: first)
+
+        XCTAssertFalse(
+            coordinator.shouldRecenter(
+                policy: policy,
+                coordinate: nearby,
+                isMapVisible: true,
+                followEnabled: true
+            )
+        )
+    }
+
+    func testSettingsSyncPayloadRoundTrip() {
+        let payload = SettingsSyncPayload(batteryMode: .saver)
+        let restored = SettingsSyncPayload(dictionary: payload.dictionaryRepresentation)
+        XCTAssertEqual(restored?.batteryMode, .saver)
+    }
 }

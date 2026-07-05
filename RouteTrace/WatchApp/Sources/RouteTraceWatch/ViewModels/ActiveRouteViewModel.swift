@@ -66,7 +66,10 @@ final class ActiveRouteViewModel {
     private var isWarmingUpGPS = false
     private var warmupActivityKind: ActivityKind = .running
     private var currentBatteryMode: BatteryMode = .normal
+    private var currentBatteryPolicy: BatteryModePolicy = BatteryModePolicy(mode: .normal)
     private var locationQualityFilter = LocationQualityFilter()
+    let displayUpdateCoordinator = DisplayUpdateCoordinator()
+    private(set) var preferredStartPage: BatteryPreferredStartPage?
 
     var isActive: Bool { phase == .active || phase == .paused || phase == .summary }
     var isPaused: Bool { phase == .paused }
@@ -127,9 +130,9 @@ final class ActiveRouteViewModel {
             }
         }
 
-        locationService.applyBatteryMode(preferences.batteryMode)
+        locationService.applyBatteryPolicy(batteryPolicy(for: preferences))
         locationService.requestAuthorization()
-        currentBatteryMode = preferences.batteryMode
+        applyBatterySettings(from: preferences)
 
         if let lastPoint = recording.trackPoints.last {
             locationQualityFilter.reset(
@@ -146,7 +149,7 @@ final class ActiveRouteViewModel {
 
         phase = persisted.phase == "paused" ? .paused : .active
         if phase == .active {
-            locationService.startTracking(distanceFilterMeters: distanceFilter(for: preferences.batteryMode))
+            locationService.startTracking(distanceFilterMeters: currentBatteryPolicy.distanceFilterMeters)
             startTimer()
         }
 
@@ -155,24 +158,44 @@ final class ActiveRouteViewModel {
             await workoutService.startWorkout(activityKind: activityKind, startDate: recording.startedAt)
         }
 
-        publishWidgetState()
+        publishWidgetState(forceTimelineReload: true)
         return true
     }
 
-    func beginGPSWarmup(preferences: WatchPreferences, activityKind: ActivityKind) {
+    func beginGPSWarmup(preferences: WatchPreferences, activityKind: ActivityKind, browseWarmup: Bool = true) {
         guard phase == .idle else { return }
 
+        let policy = batteryPolicy(for: preferences)
+        guard browseWarmup, policy.enablesBrowseWarmup else { return }
+
         warmupActivityKind = activityKind
-        currentBatteryMode = preferences.batteryMode
+        applyBatterySettings(from: preferences, browseWarmup: true)
         locationQualityFilter.reset()
         previewCoordinate = nil
         gpsAcquisitionState = .warmingUp
         isWarmingUpGPS = true
 
-        locationService.applyBatteryMode(preferences.batteryMode)
+        locationService.applyBatteryPolicy(currentBatteryPolicy)
         locationService.requestAuthorization()
         if !locationService.isTracking {
-            locationService.startTracking(distanceFilterMeters: distanceFilter(for: preferences.batteryMode))
+            locationService.startTracking(distanceFilterMeters: currentBatteryPolicy.distanceFilterMeters)
+        }
+    }
+
+    func beginImminentStartWarmup(preferences: WatchPreferences, activityKind: ActivityKind) {
+        guard phase == .idle else { return }
+
+        warmupActivityKind = activityKind
+        applyBatterySettings(from: preferences)
+        locationQualityFilter.reset()
+        previewCoordinate = nil
+        gpsAcquisitionState = .warmingUp
+        isWarmingUpGPS = true
+
+        locationService.applyBatteryPolicy(currentBatteryPolicy)
+        locationService.requestAuthorization()
+        if !locationService.isTracking {
+            locationService.startTracking(distanceFilterMeters: currentBatteryPolicy.distanceFilterMeters)
         }
     }
 
@@ -186,6 +209,25 @@ final class ActiveRouteViewModel {
         gpsAcquisitionState = .idle
         previewCoordinate = nil
         locationService.stopTracking()
+    }
+
+    func applyBatterySettings(from preferences: WatchPreferences, browseWarmup: Bool = false) {
+        let policy = batteryPolicy(for: preferences)
+        currentBatteryPolicy = policy
+        currentBatteryMode = policy.mode
+
+        if browseWarmup, policy.usesReducedBrowseWarmup {
+            locationService.applyBatteryPolicy(BatteryModePolicy(mode: .saver))
+        } else if phase == .active || phase == .paused || isWarmingUpGPS {
+            locationService.applyBatteryPolicy(policy)
+            if locationService.isTracking {
+                locationService.startTracking(distanceFilterMeters: policy.distanceFilterMeters)
+            }
+        }
+    }
+
+    func clearPreferredStartPage() {
+        preferredStartPage = nil
     }
 
     func start(route: RoutePackage, activityKind: ActivityKind, preferences: WatchPreferences) async {
@@ -210,7 +252,8 @@ final class ActiveRouteViewModel {
         )
 
         isWarmingUpGPS = false
-        currentBatteryMode = preferences.batteryMode
+        applyBatterySettings(from: preferences)
+        displayUpdateCoordinator.reset()
 
         if gpsAcquisitionState == .ready, let lastSample = locationService.lastSample {
             locationQualityFilter.reset(
@@ -228,10 +271,10 @@ final class ActiveRouteViewModel {
             gpsAcquisitionState = .acquiring
         }
 
-        locationService.applyBatteryMode(preferences.batteryMode)
+        locationService.applyBatteryPolicy(currentBatteryPolicy)
         locationService.requestAuthorization()
         if !locationService.isTracking {
-            locationService.startTracking(distanceFilterMeters: distanceFilter(for: preferences.batteryMode))
+            locationService.startTracking(distanceFilterMeters: currentBatteryPolicy.distanceFilterMeters)
         }
 
         if preferences.useHealthKitWorkouts {
@@ -245,7 +288,8 @@ final class ActiveRouteViewModel {
 
         startTimer()
         phase = .active
-        publishWidgetState()
+        preferredStartPage = currentBatteryPolicy.preferredStartPage
+        publishWidgetState(forceTimelineReload: true)
         persistActivity()
     }
 
@@ -255,20 +299,19 @@ final class ActiveRouteViewModel {
         locationService.stopTracking()
         workoutService.pauseWorkout()
         stopTimer()
-        publishWidgetState()
+        publishWidgetState(forceTimelineReload: true)
         persistActivity()
     }
 
     func resume(preferences: WatchPreferences) {
         guard phase == .paused else { return }
         phase = .active
-        currentBatteryMode = preferences.batteryMode
-        locationService.applyBatteryMode(preferences.batteryMode)
-        locationService.startTracking(distanceFilterMeters: distanceFilter(for: preferences.batteryMode))
+        applyBatterySettings(from: preferences)
+        locationService.startTracking(distanceFilterMeters: currentBatteryPolicy.distanceFilterMeters)
         gpsAcquisitionState = locationQualityFilter.hasStabilized ? .ready : .acquiring
         workoutService.resumeWorkout()
         startTimer()
-        publishWidgetState()
+        publishWidgetState(forceTimelineReload: true)
         persistActivity()
     }
 
@@ -368,6 +411,7 @@ final class ActiveRouteViewModel {
         gpsAcquisitionState = .idle
         isWarmingUpGPS = false
         locationQualityFilter.reset()
+        displayUpdateCoordinator.reset()
         lastNotifiedOffRouteLevel = .none
         lastNotifiedCueID = nil
         ActiveActivityPersistence.clear()
@@ -481,6 +525,10 @@ final class ActiveRouteViewModel {
         persistActivityIfNeeded()
     }
 
+    private func batteryPolicy(for preferences: WatchPreferences) -> BatteryModePolicy {
+        BatteryModePolicy.policy(userMode: preferences.batteryMode)
+    }
+
     private func appendTrackPoint(sample: LocationSample, update: RouteNavigationUpdate) {
         var elevationGain = recording.elevationGainMeters ?? 0
         if let altitude = sample.altitudeMeters, let last = lastElevationMeters {
@@ -571,19 +619,21 @@ final class ActiveRouteViewModel {
         timer = nil
     }
 
-    private func publishWidgetState() {
+    private func publishWidgetState(forceTimelineReload: Bool = false) {
         guard let route = routePackage, let snapshot = navigationSnapshot else { return }
         WatchWidgetStateWriter.writeSnapshot(
             snapshot,
             routeName: route.name,
             elapsedSeconds: elapsedSeconds,
-            isPaused: isPaused
+            isPaused: isPaused,
+            minReloadInterval: currentBatteryPolicy.widgetReloadMinInterval,
+            forceTimelineReload: forceTimelineReload
         )
     }
 
     private func persistActivityIfNeeded() {
         let now = Date()
-        guard now.timeIntervalSince(lastPersistenceAt) >= 2 else { return }
+        guard now.timeIntervalSince(lastPersistenceAt) >= currentBatteryPolicy.persistenceMinInterval else { return }
         persistActivity()
     }
 
@@ -635,14 +685,6 @@ final class ActiveRouteViewModel {
             Task {
                 await RouteNotificationService.notifyUpcomingCue(cue, distanceMeters: distance)
             }
-        }
-    }
-
-    private func distanceFilter(for mode: BatteryMode) -> CLLocationDistance {
-        switch mode {
-        case .normal: 5
-        case .saver: 12
-        case .ultraSaver: 25
         }
     }
 

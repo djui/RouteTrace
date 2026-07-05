@@ -16,6 +16,7 @@ struct RouteDetailView: View {
 
     private static let contentHorizontalPadding: CGFloat = 16
     private static let floatingStartClearance: CGFloat = 72
+    private static let browseWarmupDelaySeconds: UInt64 = 45
 
     init(route: RoutePackage, activeViewModel: ActiveRouteViewModel) {
         self.route = route
@@ -79,13 +80,12 @@ struct RouteDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             routeStore.lastSelectedRouteID = route.id
-            activeViewModel.beginGPSWarmup(
-                preferences: preferences,
-                activityKind: selectedActivityKind
-            )
         }
         .onDisappear {
             activeViewModel.endGPSWarmup()
+        }
+        .task(id: route.id) {
+            await scheduleBrowseWarmupIfNeeded()
         }
         .onChange(of: selectedActivityKind) { _, kind in
             activeViewModel.setWarmupActivityKind(kind)
@@ -185,8 +185,26 @@ struct RouteDetailView: View {
         }
     }
 
+    private func scheduleBrowseWarmupIfNeeded() async {
+        let policy = BatteryModePolicy.policy(userMode: preferences.batteryMode)
+        guard policy.enablesBrowseWarmup else { return }
+
+        try? await Task.sleep(nanoseconds: Self.browseWarmupDelaySeconds * 1_000_000_000)
+        guard !Task.isCancelled, !activeViewModel.isActive else { return }
+
+        activeViewModel.beginGPSWarmup(
+            preferences: preferences,
+            activityKind: selectedActivityKind,
+            browseWarmup: true
+        )
+    }
+
     private func startRoute() {
         isStarting = true
+        activeViewModel.beginImminentStartWarmup(
+            preferences: preferences,
+            activityKind: selectedActivityKind
+        )
         Task {
             await activeViewModel.start(
                 route: route,

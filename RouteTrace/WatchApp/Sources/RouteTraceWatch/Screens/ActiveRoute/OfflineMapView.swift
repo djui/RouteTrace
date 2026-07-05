@@ -10,6 +10,7 @@ struct OfflineMapView: View {
     var recenterToken: Int = 0
 
     @Environment(WatchRouteStore.self) private var routeStore
+    @Environment(WatchPreferences.self) private var preferences
     @Environment(\.colorScheme) private var colorScheme
 
     @State private var tileImages: [String: CGImage] = [:]
@@ -30,6 +31,14 @@ struct OfflineMapView: View {
 
     private var isMapFocused: Bool {
         uiState?.isMapFocus == true
+    }
+
+    private var isMapVisible: Bool {
+        uiState?.selectedPage == .liveMap || isMapFocused
+    }
+
+    private var batteryPolicy: BatteryModePolicy {
+        BatteryModePolicy.policy(userMode: preferences.batteryMode)
     }
 
     private var currentSpan: Double {
@@ -157,6 +166,21 @@ struct OfflineMapView: View {
     }
 
     private func handleLocationUpdate() {
+        guard let coordinate = viewModel.displayCoordinate else { return }
+        guard preferences.mapFollowMode || isMapFocused else { return }
+
+        let policy = batteryPolicy.displayUpdatePolicy
+        guard viewModel.displayUpdateCoordinator.shouldRecenter(
+            policy: policy,
+            coordinate: coordinate,
+            isMapVisible: isMapVisible,
+            followEnabled: preferences.mapFollowMode || isMapFocused
+        ) else {
+            return
+        }
+
+        viewModel.displayUpdateCoordinator.recordRecenter(at: coordinate)
+
         if !isMapFocused {
             resetPanOffset()
             loadTiles()

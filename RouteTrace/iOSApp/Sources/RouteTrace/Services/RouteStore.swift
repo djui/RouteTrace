@@ -54,6 +54,10 @@ final class RouteStore: ObservableObject {
         return settings
     }
 
+    func saveSettings() throws {
+        try context.save()
+    }
+
     @discardableResult
     func saveRoutePackage(_ package: RoutePackage, createArchive: Bool = true) throws -> RouteEntity {
         let entity = try persistRoutePackage(package)

@@ -23,6 +23,19 @@ struct RouteListView: View {
         .onReceive(NotificationCenter.default.publisher(for: RouteTraceIntentNotifications.pauseResumeActivity)) { _ in
             activeViewModel.togglePauseResume(preferences: preferences)
         }
+        .onReceive(NotificationCenter.default.publisher(for: RouteTraceIntentNotifications.toggleMapDirections)) { _ in
+            // Handled in ActiveRouteContainerView when active.
+        }
+        .onChange(of: preferences.batteryMode) { _, _ in
+            if activeViewModel.isActive {
+                activeViewModel.applyBatterySettings(from: preferences)
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .NSProcessInfoPowerStateDidChange)) { _ in
+            if activeViewModel.isActive {
+                activeViewModel.applyBatterySettings(from: preferences)
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: RouteTraceIntentNotifications.startLastRoute)) { _ in
             Task {
                 await startLastRouteIfNeeded()

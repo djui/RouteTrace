@@ -233,10 +233,6 @@ extension ActivityKind {
 
 extension BatteryMode {
     public var gpsRecordingAccuracyMeters: Double {
-        switch self {
-        case .normal: 50
-        case .saver: 80
-        case .ultraSaver: 150
-        }
+        BatteryModePolicy(mode: self).recordingAccuracyMeters
     }
 }

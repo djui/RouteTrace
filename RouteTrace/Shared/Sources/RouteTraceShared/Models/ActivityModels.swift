@@ -162,9 +162,21 @@ public enum BatteryMode: String, Codable, Sendable, CaseIterable, Identifiable {
 
     public var detailDescription: String {
         switch self {
-        case .normal: "Best GPS accuracy · updates every ~5 m"
-        case .saver: "Reduced GPS · updates every ~12 m"
-        case .ultraSaver: "Minimal GPS · updates every ~25 m"
+        case .normal:
+            "Best GPS accuracy · map updates with your position · full workout recording"
+        case .saver:
+            "Reduced GPS · map updates throttled · directions-friendly"
+        case .ultraSaver:
+            "Minimal GPS · route line only · directions-first · longest battery life"
+        }
+    }
+
+    public var mapSettingsConflictHint: String? {
+        switch self {
+        case .ultraSaver:
+            "Online map uses more battery; Route Only is recommended."
+        default:
+            nil
         }
     }
 }
@@ -207,9 +219,9 @@ public enum MapDisplayMode: String, Codable, Sendable, CaseIterable, Identifiabl
 
     public var detailDescription: String {
         switch self {
-        case .onlineNative: "Live MapKit tiles with GPS"
-        case .offlineCorridor: "Downloaded corridor tiles from iPhone"
-        case .routeOnly: "Route line only, lowest battery use"
+        case .onlineNative: "Live MapKit tiles with GPS. Uses more battery than offline or route-only views."
+        case .offlineCorridor: "Downloaded corridor tiles from iPhone. Lower battery use than online map."
+        case .routeOnly: "Route line only, lowest battery use."
         }
     }
 }

@@ -27,7 +27,14 @@ final class WatchConnectivityManager: NSObject {
         } else {
             isActivated = true
             isReachable = session.isReachable
+            applyReceivedApplicationContext(session.receivedApplicationContext)
         }
+    }
+
+    func applyReceivedApplicationContext(_ context: [String: Any]) {
+        guard let payload = SettingsSyncPayload(dictionary: context) else { return }
+        WatchPreferences.shared.applySyncedBatteryMode(payload.batteryMode)
+        lastSyncMessage = "Synced battery mode from iPhone."
     }
 
     func sendActivityRecording(_ recording: ActivityRecording) async {
@@ -112,11 +119,20 @@ extension WatchConnectivityManager: WCSessionDelegate {
         Task { @MainActor in
             isActivated = activated
             isReachable = reachable
+            if activated {
+                applyReceivedApplicationContext(session.receivedApplicationContext)
+            }
             if let message {
                 lastSyncMessage = message
             } else if !activated {
                 lastSyncMessage = nil
             }
+        }
+    }
+
+    nonisolated func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) {
+        Task { @MainActor in
+            applyReceivedApplicationContext(applicationContext)
         }
     }
 

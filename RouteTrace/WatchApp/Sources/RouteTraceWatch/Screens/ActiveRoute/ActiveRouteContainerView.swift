@@ -27,6 +27,18 @@ struct ActiveRouteContainerView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .conditionalRouteScreenBackground(isOpaque: !usesTransparentBackground)
+        .onReceive(NotificationCenter.default.publisher(for: RouteTraceIntentNotifications.toggleMapDirections)) { _ in
+            handleToggleMapDirections()
+        }
+        .onChange(of: viewModel.preferredStartPage) { _, page in
+            applyPreferredStartPage(page)
+        }
+        .onChange(of: preferences.batteryMode) { _, _ in
+            viewModel.applyBatterySettings(from: preferences)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .NSProcessInfoPowerStateDidChange)) { _ in
+            viewModel.applyBatterySettings(from: preferences)
+        }
     }
 
     private var carousel: some View {
@@ -57,6 +69,9 @@ struct ActiveRouteContainerView: View {
                 uiState.altitudeCrownMeters = viewModel.navigationSnapshot?.progressDistanceMeters ?? 0
             }
         }
+        .onAppear {
+            applyPreferredStartPage(viewModel.preferredStartPage)
+        }
     }
 
     @ViewBuilder
@@ -64,5 +79,22 @@ struct ActiveRouteContainerView: View {
         ActiveRouteChrome(uiState: uiState, viewModel: viewModel) {
             LiveMapView(viewModel: viewModel, uiState: uiState)
         }
+    }
+
+    private func handleToggleMapDirections() {
+        if preferences.mapDisplayMode == .routeOnly {
+            uiState.selectedPage = .directions
+        } else {
+            uiState.selectedPage = .liveMap
+        }
+    }
+
+    private func applyPreferredStartPage(_ page: BatteryPreferredStartPage?) {
+        guard let page else { return }
+        switch page {
+        case .directions:
+            uiState.selectedPage = .directions
+        }
+        viewModel.clearPreferredStartPage()
     }
 }
