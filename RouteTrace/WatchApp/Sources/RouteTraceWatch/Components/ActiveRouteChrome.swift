@@ -24,6 +24,10 @@ enum ActiveInteractionMode: Equatable {
     case mapFocus
 }
 
+enum CarouselCrownFocus: Hashable {
+    case metrics
+}
+
 @MainActor
 @Observable
 final class ActiveRouteUIState {

@@ -248,6 +248,16 @@ public struct RoutePackage: Codable, Sendable, Identifiable {
         route.contains { $0.elevationMeters != nil }
     }
 
+    /// Returns true when an on-disk copy can be skipped during Watch route materialization.
+    public func hasSameWatchMaterializedContent(as other: RoutePackage) -> Bool {
+        importedAt == other.importedAt
+            && name == other.name
+            && simplifiedPointCount == other.simplifiedPointCount
+            && offlineStatus == other.offlineStatus
+            && hasElevationData == other.hasElevationData
+            && elevationGainMeters == other.elevationGainMeters
+    }
+
     public var offlineStatus: OfflinePackStatus {
         guard let manifest = offlineMapManifest else { return .missing }
         if manifest.tileCount == 0 { return .missing }

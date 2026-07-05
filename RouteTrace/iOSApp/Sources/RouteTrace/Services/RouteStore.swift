@@ -78,9 +78,22 @@ final class RouteStore: ObservableObject {
 
         let entity: RouteEntity
         if let existing = try fetchRoute(id: package.id) {
+            let previousHasElevation = (try? existing.decodedPackage())?.hasElevationData
+            let previousGain = existing.elevationGainMeters
             existing.apply(package)
             existing.routePackageData = encodedPackage
             entity = existing
+
+            let elevationContentChanged = previousHasElevation != package.hasElevationData
+                || previousGain != package.elevationGainMeters
+            if elevationContentChanged {
+                switch entity.transferState {
+                case .installed, .queued, .transferring:
+                    entity.transferState = .notSent
+                case .notSent, .failed:
+                    break
+                }
+            }
         } else {
             entity = RouteEntity.from(package)
             entity.routePackageData = encodedPackage

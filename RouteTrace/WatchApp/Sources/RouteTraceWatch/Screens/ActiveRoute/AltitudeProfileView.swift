@@ -29,6 +29,14 @@ struct AltitudeProfileView: View {
         uiState.altitudeCrownMeters
     }
 
+    private var noElevationTitle: String {
+        "This route has no elevation in its GPX file"
+    }
+
+    private var noElevationHint: String {
+        "Re-send the route from iPhone if elevation was added later"
+    }
+
     var body: some View {
         if isLuminanceReduced {
             dimmedAltitude
@@ -76,10 +84,17 @@ struct AltitudeProfileView: View {
                 }
             } else {
                 Spacer()
-                Text("No elevation data")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity)
+                VStack(spacing: 6) {
+                    Text(noElevationTitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                    Text(noElevationHint)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity)
                 Spacer()
             }
         }

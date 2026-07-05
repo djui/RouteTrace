@@ -38,6 +38,32 @@ final class RouteTraceSharedTests: XCTestCase {
         XCTAssertFalse(package.cues.isEmpty)
     }
 
+    func testSimpleTrackHasElevationData() throws {
+        let url = RouteTraceTestSupport.fixturesBundle.url(forResource: "simple_track", withExtension: "gpx")
+            ?? RouteTraceTestSupport.fixturesBundle.url(forResource: "simple_track", withExtension: "gpx", subdirectory: "Fixtures")
+        let resolvedURL = try XCTUnwrap(url)
+        let parsed = try GPXParser().parse(data: try Data(contentsOf: resolvedURL))
+        let package = RouteProcessor().makeRoutePackage(
+            from: parsed,
+            sourceFileName: "simple_track.gpx",
+            activityHint: .running
+        )
+        XCTAssertTrue(package.hasElevationData)
+        XCTAssertNotNil(package.elevationGainMeters)
+    }
+
+    func testWatchMaterializedContentMatchesWhenElevationUnchanged() {
+        let base = sampleRoutePackage(hasElevation: true, elevationGainMeters: 180)
+        let incoming = sampleRoutePackage(hasElevation: true, elevationGainMeters: 180)
+        XCTAssertTrue(base.hasSameWatchMaterializedContent(as: incoming))
+    }
+
+    func testWatchMaterializedContentDiffersWhenElevationAdded() {
+        let existing = sampleRoutePackage(hasElevation: false, elevationGainMeters: nil)
+        let incoming = sampleRoutePackage(hasElevation: true, elevationGainMeters: 180)
+        XCTAssertFalse(existing.hasSameWatchMaterializedContent(as: incoming))
+    }
+
     func testCueGeneratorDetectsTurn() {
         let route = [
             RoutePoint(id: 0, latitude: 48.8566, longitude: 2.3522, elevationMeters: nil, distanceFromStartMeters: 0, bearingDegrees: 0),
@@ -810,5 +836,29 @@ final class RouteTraceSharedTests: XCTestCase {
         let payload = SettingsSyncPayload(batteryMode: .saver)
         let restored = SettingsSyncPayload(dictionary: payload.dictionaryRepresentation)
         XCTAssertEqual(restored?.batteryMode, .saver)
+    }
+
+    private func sampleRoutePackage(hasElevation: Bool, elevationGainMeters: Double?) -> RoutePackage {
+        let elevation: Double? = hasElevation ? 100 : nil
+        let route = [
+            RoutePoint(id: 0, latitude: 48.8566, longitude: 2.3522, elevationMeters: elevation, distanceFromStartMeters: 0, bearingDegrees: 0),
+            RoutePoint(id: 1, latitude: 48.8570, longitude: 2.3530, elevationMeters: elevation.map { $0 + 20 }, distanceFromStartMeters: 80, bearingDegrees: 45)
+        ]
+        return RoutePackage(
+            id: UUID(),
+            name: "Sample",
+            sourceFileName: "sample.gpx",
+            importedAt: Date(timeIntervalSince1970: 1_700_000_000),
+            activityHint: .running,
+            distanceMeters: 80,
+            elevationGainMeters: elevationGainMeters,
+            elevationLossMeters: elevationGainMeters == nil ? nil : 0,
+            boundingBox: GeoBoundingBox(minLatitude: 48.8566, maxLatitude: 48.857, minLongitude: 2.3522, maxLongitude: 2.353),
+            originalPointCount: 2,
+            simplifiedPointCount: 2,
+            route: route,
+            cues: [],
+            offlineMapManifest: nil
+        )
     }
 }

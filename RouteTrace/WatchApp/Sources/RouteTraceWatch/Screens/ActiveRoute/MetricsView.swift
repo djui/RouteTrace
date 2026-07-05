@@ -4,8 +4,7 @@ import SwiftUI
 struct MetricsView: View {
     @Bindable var viewModel: ActiveRouteViewModel
     @Bindable var uiState: ActiveRouteUIState
-
-    @FocusState private var metricsScrollFocused: Bool
+    var carouselCrownFocus: FocusState<CarouselCrownFocus?>.Binding
 
     @Environment(WatchPreferences.self) private var preferences
     @Environment(\.isLuminanceReduced) private var isLuminanceReduced
@@ -24,6 +23,15 @@ struct MetricsView: View {
         } else {
             ScrollView {
                 VStack(spacing: 12) {
+                    metricRow("Elapsed", RouteFormatting.duration(viewModel.elapsedSeconds), "clock")
+                    metricRow(
+                        "Distance",
+                        RouteFormatting.distance(
+                            viewModel.navigationSnapshot?.progressDistanceMeters
+                                ?? viewModel.recording.totalDistanceMeters
+                        ),
+                        "ruler"
+                    )
                     metricRow("Remaining", RouteFormatting.distance(viewModel.navigationSnapshot?.distanceRemainingMeters ?? 0), "arrow.right")
                     metricRow(
                         speedMode.shortLabel,
@@ -41,27 +49,7 @@ struct MetricsView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .routeScreenBackground()
             .focusable(isCrownEnabled)
-            .focused($metricsScrollFocused)
-            .onAppear {
-                requestMetricsCrownFocus()
-            }
-            .onChange(of: uiState.selectedPage) { _, _ in
-                requestMetricsCrownFocus()
-            }
-        }
-    }
-
-    private func requestMetricsCrownFocus() {
-        guard isCrownEnabled else {
-            metricsScrollFocused = false
-            return
-        }
-
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(100))
-            if isCrownEnabled {
-                metricsScrollFocused = true
-            }
+            .focused(carouselCrownFocus, equals: .metrics)
         }
     }
 

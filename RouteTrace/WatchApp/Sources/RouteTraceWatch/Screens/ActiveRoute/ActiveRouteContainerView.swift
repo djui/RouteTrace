@@ -8,6 +8,7 @@ struct ActiveRouteContainerView: View {
     @Environment(\.isLuminanceReduced) private var isLuminanceReduced
 
     @State private var uiState = ActiveRouteUIState()
+    @FocusState private var carouselCrownFocus: CarouselCrownFocus?
 
     private var usesTransparentBackground: Bool {
         !viewModel.isShowingSummary && uiState.selectedPage == .liveMap && !isLuminanceReduced
@@ -56,7 +57,11 @@ struct ActiveRouteContainerView: View {
                 AltitudeProfileView(viewModel: viewModel, uiState: uiState)
                     .tag(RoutePage.altitude)
 
-                MetricsView(viewModel: viewModel, uiState: uiState)
+                MetricsView(
+                    viewModel: viewModel,
+                    uiState: uiState,
+                    carouselCrownFocus: $carouselCrownFocus
+                )
                     .tag(RoutePage.metrics)
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
@@ -64,13 +69,18 @@ struct ActiveRouteContainerView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .onChange(of: uiState.selectedPage) { _, page in
+            assignCrownFocus(for: page)
             if page != .altitude {
                 uiState.clearAltitudeInspect()
                 uiState.altitudeCrownMeters = viewModel.navigationSnapshot?.progressDistanceMeters ?? 0
             }
         }
+        .onChange(of: uiState.isMapFocus) { _, _ in
+            assignCrownFocus(for: uiState.selectedPage)
+        }
         .onAppear {
             applyPreferredStartPage(viewModel.preferredStartPage)
+            assignCrownFocus(for: uiState.selectedPage)
         }
     }
 
@@ -96,5 +106,17 @@ struct ActiveRouteContainerView: View {
             uiState.selectedPage = .directions
         }
         viewModel.clearPreferredStartPage()
+    }
+
+    private func assignCrownFocus(for page: RoutePage) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(50))
+            switch page {
+            case .metrics where !uiState.isMapFocus:
+                carouselCrownFocus = .metrics
+            default:
+                carouselCrownFocus = nil
+            }
+        }
     }
 }

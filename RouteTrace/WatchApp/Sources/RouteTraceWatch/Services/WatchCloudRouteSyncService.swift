@@ -40,10 +40,7 @@ final class WatchCloudRouteSyncService {
 
         if FileManager.default.fileExists(atPath: routeJSON.path),
            let existing = try? RoutePackaging.loadRoutePackage(from: routeDirectory),
-           existing.importedAt == package.importedAt,
-           existing.name == package.name,
-           existing.simplifiedPointCount == package.simplifiedPointCount,
-           existing.offlineStatus == package.offlineStatus {
+           existing.hasSameWatchMaterializedContent(as: package) {
             return
         }
 
