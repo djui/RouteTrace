@@ -10,7 +10,7 @@ struct ActivitySummaryView: View {
     @State private var isSaving = false
 
     private static let contentHorizontalPadding: CGFloat = 16
-    private static let floatingSaveClearance: CGFloat = 40
+    private static let floatingSaveClearance: CGFloat = 72
 
     private var speedMode: SpeedDisplayMode {
         preferences.speedDisplayMode(for: viewModel.activityKind)
@@ -59,9 +59,10 @@ struct ActivitySummaryView: View {
 
             saveButton
                 .padding(.horizontal, Self.contentHorizontalPadding)
-                .ignoresSafeArea(edges: .bottom)
+                .padding(.bottom, RouteAppearance.watchFloatingButtonBottomInset)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .ignoresSafeArea(edges: .bottom)
         .navigationTitle("Finish")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)

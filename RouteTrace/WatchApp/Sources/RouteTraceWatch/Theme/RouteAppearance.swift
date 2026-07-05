@@ -64,6 +64,9 @@ enum RouteAppearance {
     /// Top/bottom chrome sitting near flat edges (not extreme corners).
     static let watchEdgeInset: CGFloat = 2
 
+    /// Floating bottom buttons — clear large watch corner radius while staying low.
+    static let watchFloatingButtonBottomInset: CGFloat = 12
+
     /// Horizontal inset for full-width bottom overlays to clear corner radius.
     static let watchOverlayHorizontalInset: CGFloat = 12
 
