@@ -187,6 +187,10 @@ public final class OfflinePackBuilder {
         options.region = region
         options.size = CGSize(width: 256, height: 256)
         options.scale = UITraitCollection.current.displayScale
+        options.traitCollection = UITraitCollection(traitsFrom: [
+            options.traitCollection,
+            UITraitCollection(userInterfaceStyle: .dark)
+        ])
 
         let snapshotter = MKMapSnapshotter(options: options)
         let snapshot = try await snapshotter.start()

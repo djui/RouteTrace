@@ -56,6 +56,10 @@ struct RouteDetailView: View {
                         .frame(maxWidth: .infinity, minHeight: 260)
                 }
 
+                #if canImport(WatchConnectivity)
+                watchStatusSection
+                #endif
+
                 statsSection
                 altitudeSection
                 offlineMapSection
@@ -141,6 +145,16 @@ struct RouteDetailView: View {
         #endif
     }
 
+    #if canImport(WatchConnectivity)
+    private var watchStatusSection: some View {
+        WatchStatusRow(
+            transferState: route.transferState,
+            isSending: isSendingToWatch,
+            onSendToWatch: sendToWatchAction
+        )
+    }
+    #endif
+
     private var statsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Stats")
@@ -148,26 +162,50 @@ struct RouteDetailView: View {
 
             LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
                 StatTile(title: "Distance", value: RouteFormatting.distance(route.distanceMeters), symbol: "ruler")
-                StatTile(title: "Points", value: "\(route.simplifiedPointCount)", symbol: "point.3.connected.trianglepath.dotted")
                 StatTile(title: "Gain", value: RouteFormatting.elevation(route.elevationGainMeters), symbol: "arrow.up.right")
                 StatTile(title: "Loss", value: RouteFormatting.elevation(route.elevationLossMeters), symbol: "arrow.down.right")
-                StatTile(title: "Watch", value: route.transferState.displayName, symbol: route.transferState.systemImage)
-                ActivityTypeTile(
-                    activityKind: activityKindBinding,
-                    isUpdating: isUpdatingActivityKind
+                StatTile(
+                    title: "Points",
+                    value: pointsValue,
+                    symbol: "point.3.connected.trianglepath.dotted"
                 )
+
+                if let routePackage, routePackage.hasElevationData,
+                   let range = elevationRange(from: routePackage.route) {
+                    StatTile(
+                        title: "Min Elevation",
+                        value: RouteFormatting.elevation(range.min),
+                        symbol: "arrow.down.to.line"
+                    )
+                    StatTile(
+                        title: "Max Elevation",
+                        value: RouteFormatting.elevation(range.max),
+                        symbol: "arrow.up.to.line"
+                    )
+                }
+
+                if let routePackage {
+                    StatTile(
+                        title: "Turn Cues",
+                        value: "\(routePackage.cues.count)",
+                        symbol: "signpost.right"
+                    )
+                }
             }
         }
     }
 
-    private var activityKindBinding: Binding<ActivityKind> {
-        Binding(
-            get: { route.activityHint },
-            set: { newKind in
-                guard newKind != route.activityHint else { return }
-                Task { await updateActivityKind(to: newKind) }
-            }
-        )
+    private var pointsValue: String {
+        if route.originalPointCount > route.simplifiedPointCount {
+            return "\(route.simplifiedPointCount) of \(route.originalPointCount)"
+        }
+        return "\(route.simplifiedPointCount)"
+    }
+
+    private func elevationRange(from route: [RoutePoint]) -> (min: Double, max: Double)? {
+        let values = route.compactMap(\.elevationMeters)
+        guard let min = values.min(), let max = values.max() else { return nil }
+        return (min, max)
     }
 
     @ViewBuilder
@@ -183,16 +221,16 @@ struct RouteDetailView: View {
 
     private var offlineMapSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Offline Map")
+            Text("Offline map")
                 .font(.headline)
 
-            OfflineMapActionRow(
+            OfflineMapControls(
                 status: route.offlineStatus,
                 tileCount: route.offlineTileCount,
                 packSizeBytes: route.offlinePackSizeBytes,
                 isBuilding: isBuildingOfflinePack,
                 isDeleting: isDeletingOfflinePack,
-                onAction: { Task { await buildOfflinePack() } },
+                onBuild: { Task { await buildOfflinePack() } },
                 onDelete: route.offlineStatus == .missing ? nil : { Task { await deleteOfflinePack() } }
             )
         }
@@ -204,9 +242,11 @@ struct RouteDetailView: View {
                 route: route,
                 routePackage: routePackage,
                 isExporting: isExporting,
-                isBuildingOfflinePack: isBuildingOfflinePack,
                 isSendingToWatch: isSendingToWatch,
-                onRebuildOfflineMap: { Task { await buildOfflinePack() } },
+                isUpdatingActivityKind: isUpdatingActivityKind,
+                onActivityKindChange: { kind in
+                    Task { await updateActivityKind(to: kind) }
+                },
                 onSendToWatch: sendToWatchAction,
                 onRename: {
                     editedRouteName = route.name
@@ -358,85 +398,161 @@ struct RouteDetailView: View {
     }
 }
 
-private struct OfflineMapActionRow: View {
+#if canImport(WatchConnectivity)
+private struct WatchStatusRow: View {
+    let transferState: TransferState
+    let isSending: Bool
+    let onSendToWatch: (() -> Void)?
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: transferState.systemImage)
+                .font(.title3)
+                .foregroundStyle(transferState.tint)
+                .frame(width: 28)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Apple Watch")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(transferState.displayName)
+                    .font(.subheadline.weight(.semibold))
+            }
+
+            Spacer(minLength: 8)
+
+            trailingContent
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    @ViewBuilder
+    private var trailingContent: some View {
+        switch transferState {
+        case .installed:
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+        case .queued, .transferring:
+            HStack(spacing: 6) {
+                ProgressView()
+                    .controlSize(.small)
+                Text(transferState.displayName)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        case .notSent, .failed:
+            if let onSendToWatch {
+                Button(action: onSendToWatch) {
+                    if isSending {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Text("Send to Watch")
+                            .font(.subheadline.weight(.semibold))
+                    }
+                }
+                .buttonStyle(.borderless)
+                .disabled(isSending)
+            }
+        }
+    }
+}
+#endif
+
+private struct OfflineMapControls: View {
     let status: OfflinePackStatus
     let tileCount: Int
     let packSizeBytes: Int64
     let isBuilding: Bool
     var isDeleting: Bool = false
-    let onAction: () -> Void
+    let onBuild: () -> Void
     var onDelete: (() -> Void)?
 
     @State private var showDeleteConfirm = false
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "map.fill")
-                .font(.title3)
-                .foregroundStyle(.white)
-                .frame(width: 40, height: 40)
-                .background(.blue, in: RoundedRectangle(cornerRadius: 10))
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Offline map")
-                    .font(.headline)
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer(minLength: 8)
-
-            if let onDelete, status != .missing {
-                Button {
-                    showDeleteConfirm = true
-                } label: {
-                    Text("Delete")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.red)
-                }
-                .buttonStyle(.plain)
-                .disabled(isDeleting || isBuilding)
-                .confirmationDialog("Delete offline map?", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
-                    Button("Delete Map", role: .destructive) {
-                        onDelete()
-                    }
-                    Button("Cancel", role: .cancel) {}
-                } message: {
-                    Text("The route stays on your iPhone; only downloaded map tiles are removed.")
-                }
-            }
-
-            Button(action: onAction) {
-                HStack(spacing: 4) {
+        if status == .missing {
+            Button(action: onBuild) {
+                HStack {
                     if isBuilding {
                         ProgressView()
-                            .controlSize(.small)
                         Text("Building…")
                     } else {
-                        Text(actionLabel)
-                        Image(systemName: "chevron.right")
-                            .font(.caption.weight(.semibold))
+                        Label("Download Offline Map", systemImage: "map.fill")
                     }
                 }
-                .foregroundStyle(.blue)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 4)
             }
-            .buttonStyle(.plain)
-            .disabled(isBuilding || isDeleting)
-        }
-        .padding()
-        .background(.background, in: RoundedRectangle(cornerRadius: 12))
-        .overlay {
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(.quaternary, lineWidth: 1)
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .disabled(isBuilding)
+        } else {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    Image(systemName: statusIcon)
+                        .foregroundStyle(statusColor)
+                    Text(statusSubtitle)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+
+                HStack(spacing: 12) {
+                    Button(action: onBuild) {
+                        if isBuilding {
+                            HStack(spacing: 6) {
+                                ProgressView()
+                                    .controlSize(.small)
+                                Text("Building…")
+                            }
+                        } else {
+                            Text("Rebuild")
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(isBuilding || isDeleting)
+
+                    if let onDelete {
+                        Button(role: .destructive) {
+                            showDeleteConfirm = true
+                        } label: {
+                            Text("Delete")
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled(isDeleting || isBuilding)
+                        .confirmationDialog("Delete offline map?", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
+                            Button("Delete Map", role: .destructive) {
+                                onDelete()
+                            }
+                            Button("Cancel", role: .cancel) {}
+                        } message: {
+                            Text("The route stays on your iPhone; only downloaded map tiles are removed.")
+                        }
+                    }
+                }
+            }
         }
     }
 
-    private var actionLabel: String {
-        status == .missing ? "Build" : "Rebuild"
+    private var statusIcon: String {
+        switch status {
+        case .ready: "checkmark.circle.fill"
+        case .partial: "exclamationmark.triangle.fill"
+        case .missing: "map"
+        }
     }
 
-    private var subtitle: String {
+    private var statusColor: Color {
+        switch status {
+        case .ready: .green
+        case .partial: .orange
+        case .missing: .secondary
+        }
+    }
+
+    private var statusSubtitle: String {
         switch status {
         case .missing:
             "Not downloaded"
@@ -449,31 +565,6 @@ private struct OfflineMapActionRow: View {
 
     private var formattedSize: String {
         ByteCountFormatter.string(fromByteCount: packSizeBytes, countStyle: .file)
-    }
-}
-
-private struct ActivityTypeTile: View {
-    @Binding var activityKind: ActivityKind
-    let isUpdating: Bool
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Label("Activity Type", systemImage: activityKind.systemImage)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Picker("Activity Type", selection: $activityKind) {
-                ForEach(ActivityKind.allCases) { kind in
-                    Label(kind.displayName, systemImage: kind.systemImage).tag(kind)
-                }
-            }
-            .pickerStyle(.menu)
-            .labelsHidden()
-            .font(.headline)
-            .disabled(isUpdating)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding()
-        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 12))
     }
 }
 
@@ -514,6 +605,15 @@ private extension TransferState {
         case .transferring: "arrow.up.circle"
         case .installed: "applewatch"
         case .failed: "exclamationmark.triangle"
+        }
+    }
+
+    var tint: Color {
+        switch self {
+        case .notSent: .secondary
+        case .queued, .transferring: .orange
+        case .installed: .green
+        case .failed: .red
         }
     }
 }

@@ -323,6 +323,91 @@ final class RouteTraceSharedTests: XCTestCase {
         XCTAssertEqual(trksegCount, 1)
     }
 
+    func testActivityRecordingPlannedRoutePointsRoundTrips() throws {
+        let routePoints = [
+            RoutePoint(id: 0, latitude: 48.8566, longitude: 2.3522, elevationMeters: nil, distanceFromStartMeters: 0, bearingDegrees: 0),
+            RoutePoint(id: 1, latitude: 48.8570, longitude: 2.3530, elevationMeters: nil, distanceFromStartMeters: 80, bearingDegrees: 45)
+        ]
+        let recording = ActivityRecording(
+            routeId: UUID(),
+            routeName: "Loop",
+            activityKind: .running,
+            plannedRoutePoints: routePoints
+        )
+
+        let data = try RouteTracePayloadCoding.encode(recording)
+        let decoded = try RouteTracePayloadCoding.decode(ActivityRecording.self, from: data)
+
+        XCTAssertEqual(decoded.plannedRoutePoints, routePoints)
+    }
+
+    func testActivityRecordingDecodesWithoutPlannedRoutePoints() throws {
+        let legacyJSON = """
+        {"activityKind":"running","elapsedSeconds":0,"id":"\(UUID().uuidString)","offRouteEvents":[],"routeId":"\(UUID().uuidString)","routeName":"Loop","startedAt":"2026-07-05T12:00:00Z","totalDistanceMeters":0,"trackPoints":[]}
+        """
+        let data = try XCTUnwrap(legacyJSON.data(using: .utf8))
+        let decoded = try RouteTracePayloadCoding.decode(ActivityRecording.self, from: data)
+        XCTAssertNil(decoded.plannedRoutePoints)
+    }
+
+    func testResolvedPlannedRoutePointsPrefersLiveRoute() throws {
+        let snapshotPoints = [
+            RoutePoint(id: 0, latitude: 48.8566, longitude: 2.3522, elevationMeters: nil, distanceFromStartMeters: 0, bearingDegrees: 0)
+        ]
+        let livePoints = [
+            RoutePoint(id: 0, latitude: 48.8600, longitude: 2.3600, elevationMeters: nil, distanceFromStartMeters: 0, bearingDegrees: 0),
+            RoutePoint(id: 1, latitude: 48.8610, longitude: 2.3610, elevationMeters: nil, distanceFromStartMeters: 120, bearingDegrees: 45)
+        ]
+        let recording = ActivityRecording(
+            routeId: UUID(),
+            routeName: "Loop",
+            activityKind: .running,
+            plannedRoutePoints: snapshotPoints
+        )
+        let liveRoute = RoutePackage(
+            id: recording.routeId,
+            name: recording.routeName,
+            sourceFileName: "loop.gpx",
+            importedAt: Date(),
+            activityHint: .running,
+            distanceMeters: 120,
+            elevationGainMeters: nil,
+            elevationLossMeters: nil,
+            boundingBox: GeoBoundingBox(minLatitude: 48.86, maxLatitude: 48.861, minLongitude: 2.36, maxLongitude: 2.361),
+            originalPointCount: 2,
+            simplifiedPointCount: 2,
+            route: livePoints,
+            cues: [],
+            offlineMapManifest: nil
+        )
+
+        XCTAssertEqual(recording.resolvedPlannedRoutePoints(liveRoute: liveRoute), livePoints)
+    }
+
+    func testResolvedPlannedRoutePointsFallsBackToSnapshot() {
+        let snapshotPoints = [
+            RoutePoint(id: 0, latitude: 48.8566, longitude: 2.3522, elevationMeters: nil, distanceFromStartMeters: 0, bearingDegrees: 0)
+        ]
+        let recording = ActivityRecording(
+            routeId: UUID(),
+            routeName: "Loop",
+            activityKind: .running,
+            plannedRoutePoints: snapshotPoints
+        )
+
+        XCTAssertEqual(recording.resolvedPlannedRoutePoints(liveRoute: nil), snapshotPoints)
+    }
+
+    func testResolvedPlannedRoutePointsReturnsEmptyWhenMissing() {
+        let recording = ActivityRecording(
+            routeId: UUID(),
+            routeName: "Loop",
+            activityKind: .running
+        )
+
+        XCTAssertTrue(recording.resolvedPlannedRoutePoints(liveRoute: nil).isEmpty)
+    }
+
     func testActivityTrackStatisticsAverageSpeed() {
         let speed = ActivityTrackStatistics.averageSpeedMetersPerSecond(
             gpsDistanceMeters: 5000,

@@ -248,7 +248,8 @@ final class ActiveRouteViewModel {
         recording = ActivityRecording(
             routeId: route.id,
             routeName: route.name,
-            activityKind: activityKind
+            activityKind: activityKind,
+            plannedRoutePoints: route.route
         )
 
         isWarmingUpGPS = false

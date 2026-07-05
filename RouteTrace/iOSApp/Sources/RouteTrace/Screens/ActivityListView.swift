@@ -12,6 +12,7 @@ struct ActivityListView: View {
     @State private var isRenaming = false
     @State private var exportURL: URL?
     @State private var isSharePresented = false
+    @State private var isShowingSettings = false
 
     var body: some View {
         NavigationStack {
@@ -38,6 +39,19 @@ struct ActivityListView: View {
             }
             .navigationTitle("Activities")
             .navigationBarTitleDisplayMode(.large)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        isShowingSettings = true
+                    } label: {
+                        Image(systemName: "gearshape")
+                    }
+                    .accessibilityLabel("Settings")
+                }
+            }
+            .sheet(isPresented: $isShowingSettings) {
+                SettingsView()
+            }
             .navigationDestination(for: UUID.self) { activityID in
                 if let activity = activities.first(where: { $0.id == activityID }) {
                     ActivityResultView(activity: activity)

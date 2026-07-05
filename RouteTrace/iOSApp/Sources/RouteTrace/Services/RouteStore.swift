@@ -301,6 +301,19 @@ final class RouteStore: ObservableObject {
             }
         }
 
+        for activity in activities {
+            let recording = (try? activity.decodedRecording()) ?? activity.recording
+            guard recording.plannedRoutePoints?.isEmpty ?? true else { continue }
+            guard let routeEntity = try fetchRoute(id: activity.routeId),
+                  let package = try? loadRoutePackage(for: routeEntity),
+                  !package.route.isEmpty else {
+                continue
+            }
+            var updated = recording
+            updated.plannedRoutePoints = package.route
+            _ = try saveActivity(updated)
+        }
+
         try context.save()
         lastCloudRestoreAt = Date()
     }

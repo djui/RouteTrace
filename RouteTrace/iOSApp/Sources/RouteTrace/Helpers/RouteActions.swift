@@ -45,24 +45,32 @@ struct RouteActionMenuItems: View {
     let route: RouteEntity
     var routePackage: RoutePackage?
     var isExporting: Bool = false
-    var isBuildingOfflinePack: Bool = false
     var isSendingToWatch: Bool = false
-    var onRebuildOfflineMap: () -> Void
+    var isUpdatingActivityKind: Bool = false
+    var onActivityKindChange: ((ActivityKind) -> Void)?
     var onSendToWatch: (() -> Void)?
     var onRename: (() -> Void)?
     var onShare: () -> Void
     var onDelete: () -> Void
 
     var body: some View {
-        Button {
-            onRebuildOfflineMap()
-        } label: {
-            Label(
-                RouteActions.offlineMapActionLabel(for: route.offlineStatus),
-                systemImage: "map.fill"
-            )
+        if let onActivityKindChange {
+            Menu {
+                ForEach(ActivityKind.allCases) { kind in
+                    Button {
+                        onActivityKindChange(kind)
+                    } label: {
+                        Label(kind.displayName, systemImage: kind.systemImage)
+                    }
+                    .disabled(kind == route.activityHint || isUpdatingActivityKind)
+                }
+            } label: {
+                Label(
+                    "Activity Type: \(route.activityHint.displayName)",
+                    systemImage: route.activityHint.systemImage
+                )
+            }
         }
-        .disabled(isBuildingOfflinePack)
 
         #if canImport(WatchConnectivity)
         if let onSendToWatch {

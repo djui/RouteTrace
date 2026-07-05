@@ -151,6 +151,7 @@ public final class ActivityEntity {
     public var averageHeartRateBPM: Double?
     public var trackPointsData: Data = Data()
     public var offRouteEventsData: Data = Data()
+    public var plannedRoutePointsData: Data = Data()
     @Attribute(.externalStorage) public var activityPayloadData: Data = Data()
     public var syncedAt: Date = Date()
 
@@ -168,6 +169,7 @@ public final class ActivityEntity {
         averageHeartRateBPM: Double? = nil,
         trackPoints: [TrackPoint] = [],
         offRouteEvents: [OffRouteEvent] = [],
+        plannedRoutePoints: [RoutePoint]? = nil,
         syncedAt: Date = Date()
     ) {
         self.id = id
@@ -184,6 +186,7 @@ public final class ActivityEntity {
         self.syncedAt = syncedAt
         self.trackPointsData = (try? RouteTracePayloadCoding.encode(trackPoints)) ?? Data()
         self.offRouteEventsData = (try? RouteTracePayloadCoding.encode(offRouteEvents)) ?? Data()
+        self.plannedRoutePointsData = (try? RouteTracePayloadCoding.encode(plannedRoutePoints)) ?? Data()
         self.activityPayloadData = (try? RouteTracePayloadCoding.encode(ActivityRecording(
             id: id,
             routeId: routeId,
@@ -197,7 +200,8 @@ public final class ActivityEntity {
             elapsedSeconds: elapsedSeconds,
             offRouteEvents: offRouteEvents,
             elevationGainMeters: elevationGainMeters,
-            averageHeartRateBPM: averageHeartRateBPM
+            averageHeartRateBPM: averageHeartRateBPM,
+            plannedRoutePoints: plannedRoutePoints
         ))) ?? Data()
     }
 
@@ -214,6 +218,14 @@ public final class ActivityEntity {
     public var offRouteEvents: [OffRouteEvent] {
         get { (try? RouteTracePayloadCoding.decode([OffRouteEvent].self, from: offRouteEventsData)) ?? [] }
         set { offRouteEventsData = (try? RouteTracePayloadCoding.encode(newValue)) ?? Data() }
+    }
+
+    public var plannedRoutePoints: [RoutePoint]? {
+        get {
+            guard !plannedRoutePointsData.isEmpty else { return nil }
+            return try? RouteTracePayloadCoding.decode([RoutePoint].self, from: plannedRoutePointsData)
+        }
+        set { plannedRoutePointsData = (try? RouteTracePayloadCoding.encode(newValue)) ?? Data() }
     }
 
     public func decodedRecording() throws -> ActivityRecording? {
@@ -241,7 +253,8 @@ public final class ActivityEntity {
             elapsedSeconds: elapsedSeconds,
             offRouteEvents: offRouteEvents,
             elevationGainMeters: elevationGainMeters,
-            averageHeartRateBPM: averageHeartRateBPM
+            averageHeartRateBPM: averageHeartRateBPM,
+            plannedRoutePoints: plannedRoutePoints
         )
     }
 
@@ -259,7 +272,8 @@ public final class ActivityEntity {
             elevationGainMeters: recording.elevationGainMeters,
             averageHeartRateBPM: recording.averageHeartRateBPM,
             trackPoints: recording.trackPoints,
-            offRouteEvents: recording.offRouteEvents
+            offRouteEvents: recording.offRouteEvents,
+            plannedRoutePoints: recording.plannedRoutePoints
         )
     }
 }

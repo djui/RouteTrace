@@ -6,6 +6,7 @@ import WatchConnectivity
 #endif
 
 struct SettingsView: View {
+    @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var routeStore: RouteStore
     #if canImport(WatchConnectivity)
     @EnvironmentObject private var connectivityManager: PhoneConnectivityManager
@@ -14,39 +15,49 @@ struct SettingsView: View {
     @State private var settings: AppSettingsEntity?
 
     var body: some View {
-        Form {
-            if let settings {
-                Section {
-                    Picker("Mode", selection: batteryModeBinding(for: settings)) {
-                        ForEach(BatteryMode.allCases) { mode in
-                            Text(mode.displayName).tag(mode)
+        NavigationStack {
+            Form {
+                if let settings {
+                    Section {
+                        Picker("Mode", selection: batteryModeBinding(for: settings)) {
+                            ForEach(BatteryMode.allCases) { mode in
+                                Text(mode.displayName).tag(mode)
+                            }
                         }
+                    } header: {
+                        Text("Battery")
+                    } footer: {
+                        Text(settings.batteryMode.detailDescription)
                     }
-                } header: {
-                    Text("Battery")
-                } footer: {
-                    Text(settings.batteryMode.detailDescription)
-                }
 
-                Section {
-                    Picker("Default Activity", selection: defaultActivityBinding(for: settings)) {
-                        ForEach(ActivityKind.allCases) { kind in
-                            Text(kind.displayName).tag(kind)
+                    Section {
+                        Picker("Default Activity", selection: defaultActivityBinding(for: settings)) {
+                            ForEach(ActivityKind.allCases) { kind in
+                                Text(kind.displayName).tag(kind)
+                            }
                         }
+                        Toggle("Build Offline Packs by Default", isOn: offlinePackBinding(for: settings))
+                    } header: {
+                        Text("Routes")
+                    } footer: {
+                        Text(settingsFooter)
                     }
-                    Toggle("Build Offline Packs by Default", isOn: offlinePackBinding(for: settings))
-                } header: {
-                    Text("Routes")
-                } footer: {
-                    Text(settingsFooter)
+                } else {
+                    ProgressView()
                 }
-            } else {
-                ProgressView()
             }
-        }
-        .navigationTitle("Settings")
-        .task {
-            loadSettingsIfNeeded()
+            .navigationTitle("Settings")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        dismiss()
+                    }
+                }
+            }
+            .task {
+                loadSettingsIfNeeded()
+            }
         }
     }
 

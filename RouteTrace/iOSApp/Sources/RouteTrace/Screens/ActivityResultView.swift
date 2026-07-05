@@ -59,6 +59,10 @@ struct ActivityResultView: View {
         )
     }
 
+    private var resolvedRoutePoints: [RoutePoint] {
+        recording.resolvedPlannedRoutePoints(liveRoute: plannedRoute)
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
@@ -66,7 +70,7 @@ struct ActivityResultView: View {
                     isMapFullscreenPresented = true
                 } label: {
                     RouteMapPreview(
-                        routePoints: plannedRoute?.route ?? [],
+                        routePoints: resolvedRoutePoints,
                         trackPoints: recording.trackPoints,
                         lineColor: .blue.opacity(0.55),
                         trackColor: .green
@@ -135,7 +139,7 @@ struct ActivityResultView: View {
             ActivityMapFullscreenView(
                 routeName: activity.displayTitle,
                 distanceLabel: RouteFormatting.distance(gpsDistanceMeters),
-                routePoints: plannedRoute?.route ?? [],
+                routePoints: resolvedRoutePoints,
                 trackPoints: recording.trackPoints
             )
         }

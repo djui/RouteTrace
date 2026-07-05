@@ -13,13 +13,15 @@ struct RouteLibraryView: View {
     @Query(sort: \RouteEntity.importedAt, order: .reverse) private var routes: [RouteEntity]
 
     @State private var isShowingImport = false
+    @State private var isShowingSettings = false
     @State private var errorMessage: String?
     @State private var successMessage: String?
     @State private var exportURL: URL?
     @State private var isSharePresented = false
     @State private var isExporting = false
-    @State private var buildingRouteID: UUID?
     @State private var sendingRouteID: UUID?
+    @State private var updatingActivityKindRouteID: UUID?
+    @State private var showSourceGPXUnavailable = false
     @State private var routePendingRename: RouteEntity?
     @State private var editedRouteName = ""
     @State private var isRenaming = false
@@ -32,15 +34,6 @@ struct RouteLibraryView: View {
                         Label("No Routes", systemImage: "point.bottomleft.forward.to.point.topright.scurvepath")
                     } description: {
                         Text("Import a GPX file to get started.")
-                    } actions: {
-                        Button {
-                            isShowingImport = true
-                        } label: {
-                            Label("Import GPX", systemImage: "square.and.arrow.down")
-                                .font(.headline)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.large)
                     }
                 } else {
                     List(routes) { route in
@@ -48,9 +41,11 @@ struct RouteLibraryView: View {
                             route: route,
                             routePackage: (try? routeStore.loadRoutePackage(for: route)),
                             isExporting: isExporting,
-                            isBuildingOfflinePack: buildingRouteID == route.id,
                             isSendingToWatch: sendingRouteID == route.id,
-                            onRebuildOfflineMap: { Task { await buildOfflinePack(for: route) } },
+                            isUpdatingActivityKind: updatingActivityKindRouteID == route.id,
+                            onActivityKindChange: { kind in
+                                Task { await updateActivityKind(for: route, to: kind) }
+                            },
                             onSendToWatch: sendToWatchAction(for: route),
                             onRename: {
                                 routePendingRename = route
@@ -62,16 +57,35 @@ struct RouteLibraryView: View {
                     }
                 }
             }
+            .overlay(alignment: .bottomTrailing) {
+                Button {
+                    isShowingImport = true
+                } label: {
+                    Image(systemName: "square.and.arrow.down")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 56, height: 56)
+                        .background(Color.accentColor, in: Circle())
+                        .shadow(color: .black.opacity(0.2), radius: 4, y: 2)
+                }
+                .accessibilityLabel("Import")
+                .padding(.trailing, 20)
+                .padding(.bottom, 16)
+            }
             .navigationTitle("Routes")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
-                ToolbarItem(placement: .primaryAction) {
+                ToolbarItem(placement: .topBarLeading) {
                     Button {
-                        isShowingImport = true
+                        isShowingSettings = true
                     } label: {
-                        Label("Import", systemImage: "square.and.arrow.down")
+                        Image(systemName: "gearshape")
                     }
+                    .accessibilityLabel("Settings")
                 }
+            }
+            .sheet(isPresented: $isShowingSettings) {
+                SettingsView()
             }
             .navigationDestination(for: UUID.self) { routeID in
                 if let route = routes.first(where: { $0.id == routeID }) {
@@ -101,6 +115,11 @@ struct RouteLibraryView: View {
                 Button("OK", role: .cancel) {}
             } message: {
                 Text(successMessage ?? "")
+            }
+            .alert("Activity Type Unavailable", isPresented: $showSourceGPXUnavailable) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text("The original GPX file is not available for this route. Re-import the route to change its activity type.")
             }
             .alert("Rename Route", isPresented: Binding(
                 get: { routePendingRename != nil },
@@ -143,15 +162,21 @@ struct RouteLibraryView: View {
     #endif
 
     @MainActor
-    private func buildOfflinePack(for route: RouteEntity) async {
-        buildingRouteID = route.id
-        defer { buildingRouteID = nil }
+    private func updateActivityKind(for route: RouteEntity, to kind: ActivityKind) async {
+        guard RouteTracePaths.hasSourceGPX(for: route.id) else {
+            showSourceGPXUnavailable = true
+            return
+        }
+
+        guard kind != route.activityHint else { return }
+
+        updatingActivityKindRouteID = route.id
+        defer { updatingActivityKindRouteID = nil }
+
         do {
-            _ = try await routeStore.buildOfflinePack(for: route)
-        } catch RouteStoreError.offlinePackSavedArchiveFailed {
-            errorMessage = RouteStoreError.offlinePackSavedArchiveFailed.localizedDescription
+            _ = try await routeStore.updateActivityHint(for: route, to: kind)
         } catch {
-            errorMessage = RouteActions.offlineMapBuildErrorMessage(for: error)
+            errorMessage = error.localizedDescription
         }
     }
 
@@ -208,9 +233,9 @@ private struct RouteListRow: View {
     let route: RouteEntity
     let routePackage: RoutePackage?
     let isExporting: Bool
-    let isBuildingOfflinePack: Bool
     let isSendingToWatch: Bool
-    let onRebuildOfflineMap: () -> Void
+    let isUpdatingActivityKind: Bool
+    let onActivityKindChange: (ActivityKind) -> Void
     let onSendToWatch: (() -> Void)?
     let onRename: () -> Void
     let onShare: () -> Void
@@ -227,9 +252,9 @@ private struct RouteListRow: View {
                 route: route,
                 routePackage: routePackage,
                 isExporting: isExporting,
-                isBuildingOfflinePack: isBuildingOfflinePack,
                 isSendingToWatch: isSendingToWatch,
-                onRebuildOfflineMap: onRebuildOfflineMap,
+                isUpdatingActivityKind: isUpdatingActivityKind,
+                onActivityKindChange: onActivityKindChange,
                 onSendToWatch: onSendToWatch,
                 onRename: onRename,
                 onShare: onShare,

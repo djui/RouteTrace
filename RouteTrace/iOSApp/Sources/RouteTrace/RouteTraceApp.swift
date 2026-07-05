@@ -126,12 +126,6 @@ struct RouteTraceRootView: View {
             Tab("Activities", systemImage: "figure.run") {
                 ActivityListView()
             }
-
-            Tab("Settings", systemImage: "gearshape") {
-                NavigationStack {
-                    SettingsView()
-                }
-            }
         }
         .tabViewStyle(.sidebarAdaptable)
         .environmentObject(routeStore)
@@ -147,12 +141,6 @@ struct RouteTraceRootView: View {
 
             Tab("Activities", systemImage: "figure.run") {
                 ActivityListView()
-            }
-
-            Tab("Settings", systemImage: "gearshape") {
-                NavigationStack {
-                    SettingsView()
-                }
             }
         }
         .tabViewStyle(.sidebarAdaptable)

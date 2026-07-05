@@ -74,6 +74,7 @@ public struct ActivityRecording: Codable, Sendable, Identifiable {
     public var offRouteEvents: [OffRouteEvent]
     public var elevationGainMeters: Double?
     public var averageHeartRateBPM: Double?
+    public var plannedRoutePoints: [RoutePoint]?
 
     public var isActive: Bool { endedAt == nil }
 
@@ -94,7 +95,8 @@ public struct ActivityRecording: Codable, Sendable, Identifiable {
         elapsedSeconds: TimeInterval = 0,
         offRouteEvents: [OffRouteEvent] = [],
         elevationGainMeters: Double? = nil,
-        averageHeartRateBPM: Double? = nil
+        averageHeartRateBPM: Double? = nil,
+        plannedRoutePoints: [RoutePoint]? = nil
     ) {
         self.id = id
         self.routeId = routeId
@@ -109,6 +111,12 @@ public struct ActivityRecording: Codable, Sendable, Identifiable {
         self.offRouteEvents = offRouteEvents
         self.elevationGainMeters = elevationGainMeters
         self.averageHeartRateBPM = averageHeartRateBPM
+        self.plannedRoutePoints = plannedRoutePoints
+    }
+
+    /// Planned route points for map overlay: live route if available, else embedded snapshot.
+    public func resolvedPlannedRoutePoints(liveRoute: RoutePackage?) -> [RoutePoint] {
+        liveRoute?.route ?? plannedRoutePoints ?? []
     }
 
     public func renamed(to newTitle: String) -> ActivityRecording {
