@@ -75,6 +75,23 @@ enum RouteAppearance {
 
     /// Crown zoom step per detent — smaller = finer zoom increments.
     static let mapCrownStep: Double = 0.001
+
+    static func elevationGradeColor(
+        elevationDelta: Double,
+        distanceDelta: Double,
+        colorScheme: ColorScheme
+    ) -> Color {
+        guard distanceDelta > 0 else { return .gray }
+
+        let grade = elevationDelta / distanceDelta
+        if grade < 0 {
+            return colorScheme == .dark ? Color.white.opacity(0.85) : Color(white: 0.72)
+        }
+        if grade < 0.02 { return .green }
+        if grade < 0.05 { return .yellow }
+        if grade < 0.10 { return .orange }
+        return .red
+    }
 }
 
 extension View {

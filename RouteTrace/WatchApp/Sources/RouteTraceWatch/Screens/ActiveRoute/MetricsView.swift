@@ -4,12 +4,17 @@ import SwiftUI
 struct MetricsView: View {
     @Bindable var viewModel: ActiveRouteViewModel
     @Bindable var uiState: ActiveRouteUIState
+    var carouselCrownFocus: FocusState<CarouselCrownFocus?>.Binding
 
     @Environment(WatchPreferences.self) private var preferences
     @Environment(\.isLuminanceReduced) private var isLuminanceReduced
 
     private var speedMode: SpeedDisplayMode {
         preferences.speedDisplayMode(for: viewModel.activityKind)
+    }
+
+    private var isCrownEnabled: Bool {
+        uiState.selectedPage == .metrics && !uiState.isMapFocus
     }
 
     var body: some View {
@@ -34,7 +39,8 @@ struct MetricsView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .routeScreenBackground()
-            .focusable(uiState.selectedPage == .metrics && !uiState.isMapFocus)
+            .focusable(isCrownEnabled)
+            .focused(carouselCrownFocus, equals: .metrics)
         }
     }
 

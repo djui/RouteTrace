@@ -24,12 +24,20 @@ enum ActiveInteractionMode: Equatable {
     case mapFocus
 }
 
+enum CarouselCrownFocus: Hashable {
+    case liveMap
+    case altitude
+    case metrics
+}
+
 @MainActor
 @Observable
 final class ActiveRouteUIState {
     var selectedPage: RoutePage = .liveMap
     var interactionMode: ActiveInteractionMode = .browse
     var mapSpan: Double = 0.012
+    var altitudeCrownMeters: Double = 0
+    var isAltitudeScrubbing: Bool = false
 
     var isMapFocus: Bool { interactionMode == .mapFocus }
 
@@ -40,6 +48,10 @@ final class ActiveRouteUIState {
 
     func exitMapFocus() {
         interactionMode = .browse
+    }
+
+    func clearAltitudeInspect() {
+        isAltitudeScrubbing = false
     }
 }
 

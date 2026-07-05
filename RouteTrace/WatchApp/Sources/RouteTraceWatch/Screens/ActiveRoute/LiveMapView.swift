@@ -204,11 +204,13 @@ struct LiveMapView: View {
 
 struct BrowseMapCrownLayer: View {
     @Bindable var uiState: ActiveRouteUIState
+    var carouselCrownFocus: FocusState<CarouselCrownFocus?>.Binding
 
     var body: some View {
         Color.clear
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .allowsHitTesting(false)
+            .focused(carouselCrownFocus, equals: .liveMap)
             .modifier(MapCrownInteraction(
                 isEnabled: true,
                 hapticFeedback: true,
