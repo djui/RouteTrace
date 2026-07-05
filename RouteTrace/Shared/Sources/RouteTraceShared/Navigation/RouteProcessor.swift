@@ -16,6 +16,10 @@ public struct RouteProcessor {
 
         let fullRoute = buildRoutePoints(from: validPoints)
         let simplified = simplify(route: fullRoute, toleranceMeters: activityHint.simplificationToleranceMeters)
+        let navigationRoute = densify(
+            route: simplified,
+            maxSegmentMeters: activityHint.navigationDensifyMaxSegmentMeters
+        )
         let cues = RouteCueGenerator().generate(route: simplified)
         let (gain, loss) = elevationStats(for: fullRoute)
         let coordinates = fullRoute.map(\.coordinate)
@@ -29,6 +33,12 @@ public struct RouteProcessor {
             ?? parsed.metadataName
             ?? sourceFileName.replacingOccurrences(of: ".gpx", with: "")
 
+        let navigationWarning = RouteNavigationQuality.warning(
+            distanceMeters: fullRoute.last?.distanceFromStartMeters ?? 0,
+            originalPointCount: validPoints.count,
+            simplifiedPointCount: simplified.count
+        )
+
         return RoutePackage(
             id: UUID(),
             name: name,
@@ -41,9 +51,10 @@ public struct RouteProcessor {
             boundingBox: boundingBox,
             originalPointCount: validPoints.count,
             simplifiedPointCount: simplified.count,
-            route: simplified,
+            route: navigationRoute,
             cues: cues,
-            offlineMapManifest: nil
+            offlineMapManifest: nil,
+            navigationWarning: navigationWarning
         )
     }
 
@@ -59,10 +70,20 @@ public struct RouteProcessor {
 
         let fullRoute = buildRoutePoints(from: validPoints)
         let simplified = simplify(route: fullRoute, toleranceMeters: activityHint.simplificationToleranceMeters)
+        let navigationRoute = densify(
+            route: simplified,
+            maxSegmentMeters: activityHint.navigationDensifyMaxSegmentMeters
+        )
         let cues = RouteCueGenerator().generate(route: simplified)
         let (gain, loss) = elevationStats(for: fullRoute)
         let coordinates = fullRoute.map(\.coordinate)
         let boundingBox = MapMath.boundingBox(for: coordinates) ?? existing.boundingBox
+
+        let navigationWarning = RouteNavigationQuality.warning(
+            distanceMeters: fullRoute.last?.distanceFromStartMeters ?? 0,
+            originalPointCount: validPoints.count,
+            simplifiedPointCount: simplified.count
+        )
 
         return RoutePackage(
             id: existing.id,
@@ -76,9 +97,10 @@ public struct RouteProcessor {
             boundingBox: boundingBox,
             originalPointCount: validPoints.count,
             simplifiedPointCount: simplified.count,
-            route: simplified,
+            route: navigationRoute,
             cues: cues,
-            offlineMapManifest: nil
+            offlineMapManifest: nil,
+            navigationWarning: navigationWarning
         )
     }
 
@@ -132,6 +154,65 @@ public struct RouteProcessor {
         guard route.count > 2 else { return route }
         let indices = ramerDouglasPeucker(route: route, toleranceMeters: toleranceMeters)
         return indices.sorted().map { route[$0] }
+    }
+
+    public func densify(route: [RoutePoint], maxSegmentMeters: Double) -> [RoutePoint] {
+        guard route.count >= 2, maxSegmentMeters > 0 else { return route }
+
+        var densifiedPoints: [ParsedGPXPoint] = []
+
+        for index in 0 ..< (route.count - 1) {
+            let start = route[index]
+            let end = route[index + 1]
+            densifiedPoints.append(
+                ParsedGPXPoint(
+                    latitude: start.latitude,
+                    longitude: start.longitude,
+                    elevationMeters: start.elevationMeters,
+                    timestamp: nil
+                )
+            )
+
+            let segmentLength = MapMath.haversineMeters(from: start.coordinate, to: end.coordinate)
+            guard segmentLength > maxSegmentMeters else { continue }
+
+            let interpolationSteps = Int(ceil(segmentLength / maxSegmentMeters))
+            guard interpolationSteps > 1 else { continue }
+
+            for step in 1 ..< interpolationSteps {
+                let fraction = Double(step) / Double(interpolationSteps)
+                let latitude = start.latitude + (end.latitude - start.latitude) * fraction
+                let longitude = start.longitude + (end.longitude - start.longitude) * fraction
+                let elevationMeters: Double?
+                if let startElevation = start.elevationMeters, let endElevation = end.elevationMeters {
+                    elevationMeters = startElevation + (endElevation - startElevation) * fraction
+                } else {
+                    elevationMeters = nil
+                }
+
+                densifiedPoints.append(
+                    ParsedGPXPoint(
+                        latitude: latitude,
+                        longitude: longitude,
+                        elevationMeters: elevationMeters,
+                        timestamp: nil
+                    )
+                )
+            }
+        }
+
+        if let last = route.last {
+            densifiedPoints.append(
+                ParsedGPXPoint(
+                    latitude: last.latitude,
+                    longitude: last.longitude,
+                    elevationMeters: last.elevationMeters,
+                    timestamp: nil
+                )
+            )
+        }
+
+        return buildRoutePoints(from: densifiedPoints)
     }
 
     private func ramerDouglasPeucker(route: [RoutePoint], toleranceMeters: Double) -> Set<Int> {

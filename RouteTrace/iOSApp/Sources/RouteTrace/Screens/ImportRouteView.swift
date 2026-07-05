@@ -20,6 +20,7 @@ struct ImportRouteView: View {
     @State private var buildOfflinePack = false
     @State private var isImporting = false
     @State private var errorMessage: String?
+    @State private var navigationWarning: String?
 
     init(
         routeStore: RouteStore,
@@ -53,6 +54,17 @@ struct ImportRouteView: View {
                         ForEach(ActivityKind.allCases) { kind in
                             Label(kind.displayName, systemImage: kind.systemImage).tag(kind)
                         }
+                    }
+                    .onChange(of: selectedActivity) { _, _ in
+                        Task { await previewNavigationWarning() }
+                    }
+                }
+
+                if let navigationWarning {
+                    Section {
+                        Label(navigationWarning, systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                            .font(.subheadline)
                     }
                 }
 
@@ -129,6 +141,32 @@ struct ImportRouteView: View {
         if routeName.isEmpty {
             routeName = url.deletingPathExtension().lastPathComponent
         }
+        Task { await previewNavigationWarning() }
+    }
+
+    @MainActor
+    private func previewNavigationWarning() async {
+        navigationWarning = nil
+        guard let url = selectedFileURL else { return }
+
+        do {
+            let accessed = url.startAccessingSecurityScopedResource()
+            defer {
+                if accessed { url.stopAccessingSecurityScopedResource() }
+            }
+
+            let data = try Data(contentsOf: url)
+            let parsed = try GPXParser().parse(data: data)
+            let package = RouteProcessor().makeRoutePackage(
+                from: parsed,
+                sourceFileName: url.lastPathComponent,
+                activityHint: selectedActivity,
+                customName: routeName.nilIfEmpty
+            )
+            navigationWarning = package.navigationWarning
+        } catch {
+            navigationWarning = nil
+        }
     }
 
     @MainActor
@@ -157,5 +195,11 @@ struct ImportRouteView: View {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+}
+
+private extension String {
+    var nilIfEmpty: String? {
+        isEmpty ? nil : self
     }
 }

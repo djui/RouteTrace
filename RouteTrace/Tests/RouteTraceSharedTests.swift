@@ -413,4 +413,127 @@ final class RouteTraceSharedTests: XCTestCase {
             .accepted
         )
     }
+
+    func testRouteProcessorDensifiesLongSegments() {
+        let sparseRoute = [
+            RoutePoint(id: 0, latitude: 48.8566, longitude: 2.3522, elevationMeters: nil, distanceFromStartMeters: 0, bearingDegrees: 0),
+            RoutePoint(id: 1, latitude: 48.8600, longitude: 2.3600, elevationMeters: nil, distanceFromStartMeters: 900, bearingDegrees: 45)
+        ]
+
+        let densified = RouteProcessor().densify(route: sparseRoute, maxSegmentMeters: 50)
+        XCTAssertGreaterThan(densified.count, sparseRoute.count)
+
+        for index in 0 ..< (densified.count - 1) {
+            let length = MapMath.haversineMeters(
+                from: densified[index].coordinate,
+                to: densified[index + 1].coordinate
+            )
+            XCTAssertLessThanOrEqual(length, 50.5)
+        }
+    }
+
+    func testRouteNavigationQualityWarnsForSparseLongRoute() {
+        let warning = RouteNavigationQuality.warning(
+            distanceMeters: 6_000,
+            originalPointCount: 8,
+            simplifiedPointCount: 6
+        )
+        XCTAssertNotNil(warning)
+        XCTAssertTrue(warning?.contains("6 navigation points") == true)
+    }
+
+    func testRouteNavigationQualityDoesNotWarnForDenseRoute() {
+        let warning = RouteNavigationQuality.warning(
+            distanceMeters: 6_000,
+            originalPointCount: 500,
+            simplifiedPointCount: 120
+        )
+        XCTAssertNil(warning)
+    }
+
+    func testDisplayCoordinateSmootherBlendsOnRoute() {
+        var smoother = DisplayCoordinateSmoother()
+        let raw = GeoCoordinate(latitude: 48.8566, longitude: 2.3522)
+        let projected = GeoCoordinate(latitude: 48.8567, longitude: 2.3524)
+
+        let smoothed = smoother.coordinate(
+            raw: raw,
+            projected: projected,
+            horizontalAccuracyMeters: 10,
+            isOffRoute: false,
+            recordingAccuracyThresholdMeters: 50
+        )
+
+        XCTAssertNotEqual(smoothed.latitude, raw.latitude)
+        XCTAssertNotEqual(smoothed.longitude, raw.longitude)
+        XCTAssertNotEqual(smoothed.latitude, projected.latitude)
+    }
+
+    func testDisplayCoordinateSmootherReturnsRawWhenOffRoute() {
+        var smoother = DisplayCoordinateSmoother()
+        let raw = GeoCoordinate(latitude: 48.8566, longitude: 2.3522)
+        let projected = GeoCoordinate(latitude: 48.8600, longitude: 2.3600)
+
+        let smoothed = smoother.coordinate(
+            raw: raw,
+            projected: projected,
+            horizontalAccuracyMeters: 10,
+            isOffRoute: true,
+            recordingAccuracyThresholdMeters: 50
+        )
+
+        XCTAssertEqual(smoothed.latitude, raw.latitude, accuracy: 0.000001)
+        XCTAssertEqual(smoothed.longitude, raw.longitude, accuracy: 0.000001)
+    }
+
+    func testNavigationEngineWidensSearchAfterPersistentOffRoute() {
+        let route = (0 ... 40).map { index in
+            RoutePoint(
+                id: index,
+                latitude: 48.8566 + Double(index) * 0.0004,
+                longitude: 2.3522 + Double(index) * 0.0004,
+                elevationMeters: nil,
+                distanceFromStartMeters: Double(index) * 60,
+                bearingDegrees: 45
+            )
+        }
+        let package = RoutePackage(
+            id: UUID(),
+            name: "Wide Search",
+            sourceFileName: "wide.gpx",
+            importedAt: Date(),
+            activityHint: .running,
+            distanceMeters: route.last?.distanceFromStartMeters ?? 0,
+            elevationGainMeters: nil,
+            elevationLossMeters: nil,
+            boundingBox: GeoBoundingBox(minLatitude: 48.8566, maxLatitude: 48.8726, minLongitude: 2.3522, maxLongitude: 2.3682),
+            originalPointCount: route.count,
+            simplifiedPointCount: route.count,
+            route: route,
+            cues: [],
+            offlineMapManifest: nil
+        )
+
+        let engine = RouteNavigationEngine(routePackage: package)
+
+        _ = engine.update(latitude: 48.8566, longitude: 2.3522, horizontalAccuracyMeters: 5, speedMetersPerSecond: 2)
+        for _ in 0 ..< 3 {
+            _ = engine.update(
+                latitude: 48.8700,
+                longitude: 2.3700,
+                horizontalAccuracyMeters: 5,
+                speedMetersPerSecond: 2
+            )
+        }
+
+        let rejoinUpdate = engine.update(
+            latitude: route[30].latitude,
+            longitude: route[30].longitude,
+            horizontalAccuracyMeters: 5,
+            speedMetersPerSecond: 2
+        )
+
+        XCTAssertNotNil(rejoinUpdate)
+        XCTAssertGreaterThanOrEqual(rejoinUpdate?.segmentIndex ?? 0, 20)
+    }
 }

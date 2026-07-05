@@ -28,6 +28,8 @@ final class ActiveRouteViewModel {
     private(set) var gpsAcquisitionState: GPSAcquisitionState = .idle
     private(set) var previewCoordinate: GeoCoordinate?
 
+    private var displayCoordinateSmoother = DisplayCoordinateSmoother()
+
     var displayCoordinate: GeoCoordinate? {
         navigationSnapshot?.currentCoordinate ?? previewCoordinate
     }
@@ -106,6 +108,7 @@ final class ActiveRouteViewModel {
         let engine = RouteNavigationEngine(routePackage: route)
         engine.restoreState(persisted.engineState)
         navigationEngine = engine
+        displayCoordinateSmoother.reset()
 
         if let lastPoint = recording.trackPoints.last {
             let coordinate = GeoCoordinate(latitude: lastPoint.latitude, longitude: lastPoint.longitude)
@@ -191,6 +194,7 @@ final class ActiveRouteViewModel {
         self.routePackage = route
         self.activityKind = activityKind
         self.navigationEngine = RouteNavigationEngine(routePackage: route)
+        displayCoordinateSmoother.reset()
         self.elapsedSeconds = 0
         self.lastElevationMeters = nil
         self.heartRateSamples = []
@@ -328,6 +332,7 @@ final class ActiveRouteViewModel {
         phase = .finished
         navigationSnapshot = nil
         navigationEngine = nil
+        displayCoordinateSmoother.reset()
         routePackage = nil
         ActiveActivityPersistence.clear()
         WatchWidgetStateWriter.clear()
@@ -358,6 +363,7 @@ final class ActiveRouteViewModel {
         routePackage = nil
         navigationEngine = nil
         navigationSnapshot = nil
+        displayCoordinateSmoother.reset()
         previewCoordinate = nil
         gpsAcquisitionState = .idle
         isWarmingUpGPS = false
@@ -432,9 +438,17 @@ final class ActiveRouteViewModel {
             longitude: sample.coordinate.longitude
         )
 
+        let displayCoordinate = displayCoordinateSmoother.coordinate(
+            raw: coordinate,
+            projected: update.projectedCoordinate,
+            horizontalAccuracyMeters: sample.horizontalAccuracyMeters,
+            isOffRoute: update.isOffRoute,
+            recordingAccuracyThresholdMeters: currentBatteryMode.gpsRecordingAccuracyMeters
+        )
+
         let snapshot = engine.makeSnapshot(
             routeId: route.id,
-            coordinate: coordinate,
+            coordinate: displayCoordinate,
             speed: sample.speedMetersPerSecond,
             update: update
         )

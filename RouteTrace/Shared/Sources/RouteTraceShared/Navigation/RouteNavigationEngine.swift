@@ -22,6 +22,11 @@ public final class RouteNavigationEngine: @unchecked Sendable {
     private var lastProgressMeters = 0.0
     private var completedTrack: [GeoCoordinate] = []
     private var actualTrack: [GeoCoordinate] = []
+    private var offRouteUpdateCount = 0
+
+    private static let defaultSearchWindow = 100
+    private static let widenedSearchWindow = 500
+    private static let offRouteUpdatesBeforeWidening = 3
 
     public init(routePackage: RoutePackage) {
         self.route = routePackage.route
@@ -59,6 +64,7 @@ public final class RouteNavigationEngine: @unchecked Sendable {
         lastProgressMeters = 0
         completedTrack = []
         actualTrack = []
+        offRouteUpdateCount = 0
     }
 
     public func update(
@@ -72,11 +78,15 @@ public final class RouteNavigationEngine: @unchecked Sendable {
         let location = GeoCoordinate(latitude: latitude, longitude: longitude)
         actualTrack.append(location)
 
+        let searchWindow = offRouteUpdateCount >= Self.offRouteUpdatesBeforeWidening
+            ? Self.widenedSearchWindow
+            : Self.defaultSearchWindow
+
         guard let nearest = MapMath.nearestPointOnPolyline(
             to: location,
             route: route,
             searchStartIndex: max(0, lastSegmentIndex - 2),
-            searchWindow: 100
+            searchWindow: searchWindow
         ) else { return nil }
 
         let accuracyAdjustedOffRoute = max(0, nearest.distanceMeters - max(0, horizontalAccuracyMeters - 10))
@@ -94,6 +104,12 @@ public final class RouteNavigationEngine: @unchecked Sendable {
 
         let isOffRoute = accuracyAdjustedOffRoute > warningThreshold
         let isCritical = accuracyAdjustedOffRoute > criticalThreshold
+
+        if isOffRoute {
+            offRouteUpdateCount += 1
+        } else {
+            offRouteUpdateCount = 0
+        }
 
         let nextCue = cues.first { $0.distanceFromStartMeters > progress + 5 }
         let distanceToCue = nextCue.map { max(0, $0.distanceFromStartMeters - progress) }

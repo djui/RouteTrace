@@ -117,7 +117,8 @@ public enum RoutePackaging {
             simplifiedPointCount: package.simplifiedPointCount,
             route: package.route,
             cues: package.cues,
-            offlineMapManifest: nil
+            offlineMapManifest: nil,
+            navigationWarning: package.navigationWarning
         )
 
         let routeURL = routeDirectory.appendingPathComponent("route.json")

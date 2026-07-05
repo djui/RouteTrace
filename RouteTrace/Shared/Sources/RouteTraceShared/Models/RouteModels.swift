@@ -45,6 +45,14 @@ public enum ActivityKind: String, Codable, Sendable, CaseIterable, Identifiable 
         }
     }
 
+    public var navigationDensifyMaxSegmentMeters: Double {
+        switch self {
+        case .running, .trailRunning: 25
+        case .gravelCycling: 35
+        case .roadCycling: 50
+        }
+    }
+
     public var corridorBufferMeters: Double {
         switch self {
         case .running, .trailRunning: 400
@@ -200,6 +208,41 @@ public struct RoutePackage: Codable, Sendable, Identifiable {
     public let route: [RoutePoint]
     public let cues: [RouteCue]
     public let offlineMapManifest: OfflineMapManifest?
+    public let navigationWarning: String?
+
+    public init(
+        id: UUID,
+        name: String,
+        sourceFileName: String,
+        importedAt: Date,
+        activityHint: ActivityKind,
+        distanceMeters: Double,
+        elevationGainMeters: Double?,
+        elevationLossMeters: Double?,
+        boundingBox: GeoBoundingBox,
+        originalPointCount: Int,
+        simplifiedPointCount: Int,
+        route: [RoutePoint],
+        cues: [RouteCue],
+        offlineMapManifest: OfflineMapManifest?,
+        navigationWarning: String? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.sourceFileName = sourceFileName
+        self.importedAt = importedAt
+        self.activityHint = activityHint
+        self.distanceMeters = distanceMeters
+        self.elevationGainMeters = elevationGainMeters
+        self.elevationLossMeters = elevationLossMeters
+        self.boundingBox = boundingBox
+        self.originalPointCount = originalPointCount
+        self.simplifiedPointCount = simplifiedPointCount
+        self.route = route
+        self.cues = cues
+        self.offlineMapManifest = offlineMapManifest
+        self.navigationWarning = navigationWarning
+    }
 
     public var hasElevationData: Bool {
         route.contains { $0.elevationMeters != nil }

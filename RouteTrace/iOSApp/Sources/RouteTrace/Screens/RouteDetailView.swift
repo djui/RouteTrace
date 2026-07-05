@@ -39,6 +39,15 @@ struct RouteDetailView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 16))
                     }
                     .buttonStyle(.plain)
+
+                    if let navigationWarning = routePackage.navigationWarning {
+                        Label(navigationWarning, systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                            .font(.subheadline)
+                            .padding(12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(Color.orange.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+                    }
                 } else if isLoading {
                     ProgressView()
                         .frame(maxWidth: .infinity, minHeight: 260)
