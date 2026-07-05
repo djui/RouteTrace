@@ -7,7 +7,6 @@ struct ActivityListView: View {
     @Query(sort: \ActivityEntity.startedAt, order: .reverse) private var activities: [ActivityEntity]
 
     @State private var errorMessage: String?
-    @State private var activityPendingDelete: ActivityEntity?
     @State private var exportURL: URL?
     @State private var isSharePresented = false
 
@@ -22,31 +21,11 @@ struct ActivityListView: View {
                     }
                 } else {
                     List(activities) { activity in
-                        NavigationLink(value: activity.id) {
-                            ActivityRowView(activity: activity)
-                        }
-                        .contextMenu {
-                            Button {
-                                shareActivity(activity)
-                            } label: {
-                                Label("Share", systemImage: "square.and.arrow.up")
-                            }
-
-                            Divider()
-
-                            Button(role: .destructive) {
-                                activityPendingDelete = activity
-                            } label: {
-                                Label("Delete", systemImage: "trash")
-                            }
-                        }
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button(role: .destructive) {
-                                activityPendingDelete = activity
-                            } label: {
-                                Label("Delete", systemImage: "trash")
-                            }
-                        }
+                        ActivityListRow(
+                            activity: activity,
+                            onShare: { shareActivity($0) },
+                            onDelete: { deleteActivity($0) }
+                        )
                     }
                 }
             }
@@ -61,26 +40,6 @@ struct ActivityListView: View {
                 if let exportURL {
                     ShareSheet(items: [exportURL])
                 }
-            }
-            .confirmationDialog(
-                "Delete this activity?",
-                isPresented: Binding(
-                    get: { activityPendingDelete != nil },
-                    set: { if !$0 { activityPendingDelete = nil } }
-                ),
-                titleVisibility: .visible
-            ) {
-                Button("Delete Activity", role: .destructive) {
-                    if let activity = activityPendingDelete {
-                        deleteActivity(activity)
-                        activityPendingDelete = nil
-                    }
-                }
-                Button("Cancel", role: .cancel) {
-                    activityPendingDelete = nil
-                }
-            } message: {
-                Text("This removes the activity from your iPhone.")
             }
             .alert("Activity Error", isPresented: Binding(
                 get: { errorMessage != nil },
@@ -111,6 +70,56 @@ struct ActivityListView: View {
             try routeStore.deleteActivity(activity)
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+}
+
+private struct ActivityListRow: View {
+    let activity: ActivityEntity
+    let onShare: (ActivityEntity) -> Void
+    let onDelete: (ActivityEntity) -> Void
+
+    @State private var showDeleteConfirmation = false
+
+    var body: some View {
+        NavigationLink(value: activity.id) {
+            ActivityRowView(activity: activity)
+        }
+        .contextMenu {
+            Button {
+                onShare(activity)
+            } label: {
+                Label("Share", systemImage: "square.and.arrow.up")
+            }
+
+            Divider()
+
+            Button(role: .destructive) {
+                showDeleteConfirmation = true
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button(role: .none) {
+                showDeleteConfirmation = true
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+            .tint(.red)
+        }
+        .confirmationDialog(
+            "Delete this activity?",
+            isPresented: $showDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Activity", role: .destructive) {
+                showDeleteConfirmation = false
+                onDelete(activity)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes the activity from your iPhone.")
         }
     }
 }

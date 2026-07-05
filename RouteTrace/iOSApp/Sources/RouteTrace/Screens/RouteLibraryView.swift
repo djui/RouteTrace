@@ -15,7 +15,6 @@ struct RouteLibraryView: View {
     @State private var isShowingImport = false
     @State private var errorMessage: String?
     @State private var successMessage: String?
-    @State private var routePendingDelete: RouteEntity?
     @State private var exportURL: URL?
     @State private var isSharePresented = false
     @State private var isExporting = false
@@ -42,29 +41,17 @@ struct RouteLibraryView: View {
                     }
                 } else {
                     List(routes) { route in
-                        NavigationLink(value: route.id) {
-                            RouteRowView(route: route)
-                        }
-                        .contextMenu {
-                            RouteActionMenuItems(
-                                route: route,
-                                routePackage: (try? routeStore.loadRoutePackage(for: route)),
-                                isExporting: isExporting,
-                                isBuildingOfflinePack: buildingRouteID == route.id,
-                                isSendingToWatch: sendingRouteID == route.id,
-                                onRebuildOfflineMap: { Task { await buildOfflinePack(for: route) } },
-                                onSendToWatch: sendToWatchAction(for: route),
-                                onShare: { shareRoute(route) },
-                                onDelete: { routePendingDelete = route }
-                            )
-                        }
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button(role: .destructive) {
-                                routePendingDelete = route
-                            } label: {
-                                Label("Delete", systemImage: "trash")
-                            }
-                        }
+                        RouteListRow(
+                            route: route,
+                            routePackage: (try? routeStore.loadRoutePackage(for: route)),
+                            isExporting: isExporting,
+                            isBuildingOfflinePack: buildingRouteID == route.id,
+                            isSendingToWatch: sendingRouteID == route.id,
+                            onRebuildOfflineMap: { Task { await buildOfflinePack(for: route) } },
+                            onSendToWatch: sendToWatchAction(for: route),
+                            onShare: { shareRoute(route) },
+                            onDelete: { deleteRoute($0) }
+                        )
                     }
                 }
             }
@@ -91,26 +78,6 @@ struct RouteLibraryView: View {
                 if let exportURL {
                     ShareSheet(items: [exportURL])
                 }
-            }
-            .confirmationDialog(
-                "Delete this route?",
-                isPresented: Binding(
-                    get: { routePendingDelete != nil },
-                    set: { if !$0 { routePendingDelete = nil } }
-                ),
-                titleVisibility: .visible
-            ) {
-                Button("Delete Route", role: .destructive) {
-                    if let route = routePendingDelete {
-                        deleteRoute(route)
-                        routePendingDelete = nil
-                    }
-                }
-                Button("Cancel", role: .cancel) {
-                    routePendingDelete = nil
-                }
-            } message: {
-                Text("This removes the route and any offline map pack from your iPhone.")
             }
             .alert("Route Error", isPresented: Binding(
                 get: { errorMessage != nil },
@@ -195,6 +162,60 @@ struct RouteLibraryView: View {
             try routeStore.deleteRoute(route)
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+}
+
+private struct RouteListRow: View {
+    let route: RouteEntity
+    let routePackage: RoutePackage?
+    let isExporting: Bool
+    let isBuildingOfflinePack: Bool
+    let isSendingToWatch: Bool
+    let onRebuildOfflineMap: () -> Void
+    let onSendToWatch: (() -> Void)?
+    let onShare: () -> Void
+    let onDelete: (RouteEntity) -> Void
+
+    @State private var showDeleteConfirmation = false
+
+    var body: some View {
+        NavigationLink(value: route.id) {
+            RouteRowView(route: route)
+        }
+        .contextMenu {
+            RouteActionMenuItems(
+                route: route,
+                routePackage: routePackage,
+                isExporting: isExporting,
+                isBuildingOfflinePack: isBuildingOfflinePack,
+                isSendingToWatch: isSendingToWatch,
+                onRebuildOfflineMap: onRebuildOfflineMap,
+                onSendToWatch: onSendToWatch,
+                onShare: onShare,
+                onDelete: { showDeleteConfirmation = true }
+            )
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button(role: .none) {
+                showDeleteConfirmation = true
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+            .tint(.red)
+        }
+        .confirmationDialog(
+            "Delete this route?",
+            isPresented: $showDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Route", role: .destructive) {
+                showDeleteConfirmation = false
+                onDelete(route)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This removes the route and any offline map pack from your iPhone.")
         }
     }
 }
