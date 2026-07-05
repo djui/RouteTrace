@@ -21,6 +21,41 @@ struct RouteDetailView: View {
     }
 
     var body: some View {
+        ZStack(alignment: .bottom) {
+            routeForm
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            startRouteControl
+                .padding(.horizontal, 16)
+        }
+        .ignoresSafeArea(edges: .bottom)
+        .navigationTitle(route.name)
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            routeStore.lastSelectedRouteID = route.id
+        }
+        .confirmationDialog("Delete this route?", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
+            Button("Delete", role: .destructive) {
+                Task {
+                    try? await routeStore.deleteRoute(id: route.id)
+                    dismiss()
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+        .confirmationDialog("Delete offline map?", isPresented: $showDeleteMapConfirm, titleVisibility: .visible) {
+            Button("Delete Map", role: .destructive) {
+                Task {
+                    try? await routeStore.deleteOfflinePack(id: route.id)
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The route stays on your Watch; only downloaded map tiles are removed.")
+        }
+    }
+
+    private var routeForm: some View {
         Form {
             Section {
                 RoutePreviewMap(route: route)
@@ -62,36 +97,6 @@ struct RouteDetailView: View {
         }
         .listSectionSpacing(8)
         .padding(.bottom, 44)
-        .overlay(alignment: .bottom) {
-            startRouteControl
-                .padding(.horizontal, 16)
-                .padding(.bottom, RouteAppearance.watchEdgeInset)
-                .ignoresSafeArea(edges: .bottom)
-        }
-        .navigationTitle(route.name)
-        .navigationBarTitleDisplayMode(.inline)
-        .onAppear {
-            routeStore.lastSelectedRouteID = route.id
-        }
-        .confirmationDialog("Delete this route?", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
-            Button("Delete", role: .destructive) {
-                Task {
-                    try? await routeStore.deleteRoute(id: route.id)
-                    dismiss()
-                }
-            }
-            Button("Cancel", role: .cancel) {}
-        }
-        .confirmationDialog("Delete offline map?", isPresented: $showDeleteMapConfirm, titleVisibility: .visible) {
-            Button("Delete Map", role: .destructive) {
-                Task {
-                    try? await routeStore.deleteOfflinePack(id: route.id)
-                }
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("The route stays on your Watch; only downloaded map tiles are removed.")
-        }
     }
 
     private var offlineLabel: String {
@@ -107,13 +112,12 @@ struct RouteDetailView: View {
         Button {
             startRoute()
         } label: {
-            Label(isStarting ? "Starting…" : "Start", systemImage: "play.fill")
+            Text(isStarting ? "Starting…" : "Start")
                 .font(.headline)
                 .frame(maxWidth: .infinity)
         }
         .buttonStyle(.borderedProminent)
         .tint(.green)
-        .controlSize(.large)
         .disabled(isStarting)
     }
 

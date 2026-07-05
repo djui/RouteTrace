@@ -126,13 +126,12 @@ struct ActiveRouteChrome<Content: View>: View {
     private var liveMapBrowseOverlays: some View {
         Color.clear
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .overlay(alignment: .topLeading) {
+            .overlay(alignment: .top) {
                 RouteDistanceBubble(
                     covered: RouteFormatting.distance(viewModel.navigationSnapshot?.progressDistanceMeters ?? 0),
                     remaining: RouteFormatting.distance(viewModel.navigationSnapshot?.distanceRemainingMeters ?? 0)
                 )
-                .padding(.leading, 4)
-                .padding(.top, RouteAppearance.watchEdgeInset)
+                .padding(.top, RouteAppearance.watchMapDistanceTopInset)
             }
             .overlay(alignment: .topTrailing) {
                 ActiveRouteStatusBar(
@@ -140,7 +139,7 @@ struct ActiveRouteChrome<Content: View>: View {
                     activityKind: viewModel.activityKind,
                     isPaused: viewModel.isPaused
                 )
-                .padding(.trailing, 4)
+                .padding(.trailing, RouteAppearance.watchCornerClearance)
                 .padding(.top, RouteAppearance.watchEdgeInset)
             }
             .overlay(alignment: .bottom) {
@@ -158,7 +157,7 @@ struct ActiveRouteChrome<Content: View>: View {
 
                     ActiveRoutePageDots(selectedPage: uiState.selectedPage)
                 }
-                .padding(.horizontal, 4)
+                .padding(.horizontal, RouteAppearance.watchOverlayHorizontalInset)
                 .padding(.bottom, RouteAppearance.watchEdgeInset)
             }
             .ignoresSafeArea(edges: .vertical)
@@ -215,13 +214,13 @@ struct RouteDistanceBubble: View {
     let remaining: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        HStack(spacing: 10) {
             metricRow(symbol: "location.circle.fill", value: covered)
             metricRow(symbol: "flag.fill", value: remaining)
         }
-        .padding(.horizontal, 8)
+        .padding(.horizontal, 10)
         .padding(.vertical, 4)
-        .background(RouteAppearance.overlayFill, in: RoundedRectangle(cornerRadius: 12))
+        .background(RouteAppearance.overlayFill, in: Capsule())
     }
 
     private func metricRow(symbol: String, value: String) -> some View {

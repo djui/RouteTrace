@@ -64,8 +64,14 @@ enum RouteAppearance {
     /// Top/bottom chrome sitting near flat edges (not extreme corners).
     static let watchEdgeInset: CGFloat = 2
 
-    /// Crown zoom step — larger = softer per detent.
-    static let mapCrownStep: Double = 0.004
+    /// Horizontal inset for full-width bottom overlays to clear corner radius.
+    static let watchOverlayHorizontalInset: CGFloat = 12
+
+    /// Centered map distance bubble — below system time and status icons.
+    static let watchMapDistanceTopInset: CGFloat = 20
+
+    /// Crown zoom step per detent — smaller = finer zoom increments.
+    static let mapCrownStep: Double = 0.001
 }
 
 extension View {
