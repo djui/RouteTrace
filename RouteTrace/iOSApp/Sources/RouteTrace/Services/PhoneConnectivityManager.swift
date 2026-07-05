@@ -62,6 +62,8 @@ final class PhoneConnectivityManager: NSObject, ObservableObject {
     private let context: ModelContext
     private let routeStore: RouteStore
     private let session: WCSession?
+    private var activeTransferRouteIDs: Set<UUID> = []
+    private var inFlightTransferFiles: [UUID: URL] = [:]
 
     @Published private(set) var isActivated = false
     @Published private(set) var isWatchReachable = false
@@ -138,6 +140,7 @@ final class PhoneConnectivityManager: NSObject, ObservableObject {
         refreshSessionState()
         guard isWatchPaired else { throw ConnectivityError.watchNotPaired }
         guard isWatchAppInstalled else { throw ConnectivityError.watchAppNotInstalled }
+        guard !activeTransferRouteIDs.contains(routeID) else { return }
 
         guard let entity = try routeStore.fetchRoute(id: routeID) else {
             throw ConnectivityError.routeNotFound
@@ -145,15 +148,25 @@ final class PhoneConnectivityManager: NSObject, ObservableObject {
 
         let package = try routeStore.loadRoutePackage(for: entity)
         let archiveURL = try routeStore.ensureRoutepackArchive(for: entity)
+        let transferURL = try WCSessionFileInbox.copyToTemporaryURL(from: archiveURL, prefix: "watch-transfer")
 
         let metadata = RouteTransferMetadata(routePackage: package).dictionaryRepresentation
-        try routeStore.updateTransferState(for: routeID, state: .queued)
         lastTransferError = nil
         lastTransferSuccess = nil
 
-        session.transferFile(archiveURL, metadata: metadata)
-        try routeStore.updateTransferState(for: routeID, state: .transferring)
-        lastTransferSuccess = "Route queued for Apple Watch."
+        do {
+            try routeStore.updateTransferState(for: routeID, state: .queued)
+            activeTransferRouteIDs.insert(routeID)
+            inFlightTransferFiles[routeID] = transferURL
+            session.transferFile(transferURL, metadata: metadata)
+            try routeStore.updateTransferState(for: routeID, state: .transferring)
+            lastTransferSuccess = "Route queued for Apple Watch."
+        } catch {
+            activeTransferRouteIDs.remove(routeID)
+            inFlightTransferFiles.removeValue(forKey: routeID)
+            try? FileManager.default.removeItem(at: transferURL)
+            throw error
+        }
     }
 
     private func receiveActivityData(_ data: Data) -> Bool {
@@ -201,6 +214,11 @@ final class PhoneConnectivityManager: NSObject, ObservableObject {
     }
 
     private func handleTransferCompletion(for routeID: UUID, error: Error?) {
+        activeTransferRouteIDs.remove(routeID)
+        if let transferURL = inFlightTransferFiles.removeValue(forKey: routeID) {
+            try? FileManager.default.removeItem(at: transferURL)
+        }
+
         do {
             if let error {
                 lastTransferError = error.localizedDescription

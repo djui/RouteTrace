@@ -31,7 +31,7 @@ final class RouteWatchAutoTransfer {
         guard connectivityManager.canTransferToWatch else { return }
         guard let routes = try? routeStore.fetchRoutes() else { return }
 
-        for route in routes where route.transferState != .installed {
+        for route in routes where route.transferState == .notSent || route.transferState == .failed {
             queueTransfer(for: route.id)
         }
     }

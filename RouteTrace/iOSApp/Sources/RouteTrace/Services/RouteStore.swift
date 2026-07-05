@@ -67,6 +67,7 @@ final class RouteStore: ObservableObject {
         if createArchive {
             let archiveURL = RoutePackaging.makeArchiveURL(for: package, in: RouteTracePaths.routesRoot)
             try RoutePackaging.zipRouteDirectory(entity.routeDirectoryURL, to: archiveURL)
+            onRoutePackageSaved?(package.id)
         }
         return entity
     }
@@ -87,7 +88,6 @@ final class RouteStore: ObservableObject {
         }
 
         try context.save()
-        onRoutePackageSaved?(package.id)
         return entity
     }
 
@@ -212,6 +212,7 @@ final class RouteStore: ObservableObject {
         } catch {
             throw RouteStoreError.offlinePackSavedArchiveFailed
         }
+        onRoutePackageSaved?(updated.id)
         guard let refreshed = try fetchRoute(id: entity.id) else {
             throw RouteStoreError.routeNotFound
         }

@@ -125,6 +125,21 @@ final class RouteTraceSharedTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: installedTileURL), tileData)
     }
 
+    func testWCSessionFileInboxCopySurvivesSourceDeletion() throws {
+        let fileManager = FileManager.default
+        let sourceURL = fileManager.temporaryDirectory.appendingPathComponent("wc-source-\(UUID().uuidString).bin")
+        let sourceData = Data("route-pack-payload".utf8)
+        try sourceData.write(to: sourceURL, options: .atomic)
+        defer { try? fileManager.removeItem(at: sourceURL) }
+
+        let copiedURL = try WCSessionFileInbox.copyToTemporaryURL(from: sourceURL, prefix: "watch-transfer")
+        defer { try? fileManager.removeItem(at: copiedURL) }
+
+        try fileManager.removeItem(at: sourceURL)
+
+        XCTAssertEqual(try Data(contentsOf: copiedURL), sourceData)
+    }
+
     func testActivityTrackStatisticsGPSDistance() {
         let base = Date(timeIntervalSince1970: 1_700_000_000)
         let points = [
