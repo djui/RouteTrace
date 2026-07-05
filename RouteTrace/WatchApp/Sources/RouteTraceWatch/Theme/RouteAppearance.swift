@@ -62,11 +62,8 @@ enum RouteAppearance {
     static let routeStrokeWidth: CGFloat = 4.5
     static let routeOutlineColor = Color.black.opacity(0.55)
 
-    /// Top-leading controls (X) — keep clear of large corner radius.
+    /// Top-leading controls — keep clear of large corner radius.
     static let watchCornerClearance: CGFloat = 12
-
-    /// Interactive map exit control — extra inset so the glass circle isn't clipped.
-    static let watchMapFocusControlInset: CGFloat = 16
 
     /// Top/bottom chrome sitting near flat edges (not extreme corners).
     static let watchEdgeInset: CGFloat = 2
@@ -112,10 +109,11 @@ struct RouteMapIconButton: View {
                 .foregroundStyle(RouteAppearance.overlayText.opacity(0.85))
                 .padding(8)
                 .routeMapOverlayBackground(in: Circle())
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .buttonStyle(.plain)
-        .frame(minWidth: 36, minHeight: 36)
-        .contentShape(Circle())
+        .frame(width: 44, height: 44)
+        .contentShape(Rectangle())
     }
 }
 
@@ -156,6 +154,11 @@ extension View {
 
     func routeMapOverlayBackground<S: Shape>(in shape: S) -> some View {
         glassEffect(RouteAppearance.mapOverlayGlass, in: shape)
+    }
+
+    func watchTopLeadingMapControl() -> some View {
+        padding(.leading, RouteAppearance.watchCornerClearance)
+            .padding(.top, RouteAppearance.watchEdgeInset)
     }
 
     @ViewBuilder

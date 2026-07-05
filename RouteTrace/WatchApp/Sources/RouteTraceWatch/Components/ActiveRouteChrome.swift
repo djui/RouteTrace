@@ -153,22 +153,16 @@ struct ActiveRouteChrome<Content: View>: View {
     }
 
     private var mapFocusExitOverlay: some View {
-        VStack(spacing: 0) {
-            HStack(alignment: .top) {
+        Color.clear
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .allowsHitTesting(false)
+            .overlay(alignment: .topLeading) {
                 RouteMapIconButton(systemName: "xmark") {
                     uiState.exitMapFocus()
                 }
-
-                Spacer(minLength: 0)
+                .watchTopLeadingMapControl()
             }
-            .padding(.leading, RouteAppearance.watchMapFocusControlInset)
-            .padding(.top, RouteAppearance.watchMapFocusControlInset)
-
-            Spacer(minLength: 0)
-                .allowsHitTesting(false)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .allowsHitTesting(true)
+            .ignoresSafeArea(edges: .vertical)
     }
 
     private var liveMapBrowseOverlays: some View {
