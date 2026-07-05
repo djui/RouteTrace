@@ -21,6 +21,15 @@ public enum ActivityKind: String, Codable, Sendable, CaseIterable, Identifiable 
         }
     }
 
+    public var informalName: String {
+        switch self {
+        case .running: "run"
+        case .trailRunning: "trail run"
+        case .gravelCycling: "gravel biking"
+        case .roadCycling: "road biking"
+        }
+    }
+
     public var systemImage: String {
         switch self {
         case .trailRunning, .running: "figure.run"

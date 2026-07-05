@@ -4,7 +4,8 @@ import SwiftUI
 struct MetricsView: View {
     @Bindable var viewModel: ActiveRouteViewModel
     @Bindable var uiState: ActiveRouteUIState
-    var carouselCrownFocus: FocusState<CarouselCrownFocus?>.Binding
+
+    @FocusState private var metricsScrollFocused: Bool
 
     @Environment(WatchPreferences.self) private var preferences
     @Environment(\.isLuminanceReduced) private var isLuminanceReduced
@@ -40,7 +41,27 @@ struct MetricsView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .routeScreenBackground()
             .focusable(isCrownEnabled)
-            .focused(carouselCrownFocus, equals: .metrics)
+            .focused($metricsScrollFocused)
+            .onAppear {
+                requestMetricsCrownFocus()
+            }
+            .onChange(of: uiState.selectedPage) { _, _ in
+                requestMetricsCrownFocus()
+            }
+        }
+    }
+
+    private func requestMetricsCrownFocus() {
+        guard isCrownEnabled else {
+            metricsScrollFocused = false
+            return
+        }
+
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(100))
+            if isCrownEnabled {
+                metricsScrollFocused = true
+            }
         }
     }
 

@@ -202,7 +202,11 @@ final class ActiveRouteViewModel {
         publishWidgetState()
     }
 
-    func commitFinish(preferences: WatchPreferences, connectivity: WatchConnectivityManager) async {
+    func commitFinish(
+        preferences: WatchPreferences,
+        connectivity: WatchConnectivityManager,
+        activityStore: WatchActivityStore
+    ) async {
         guard phase == .summary else { return }
 
         let endDate = Date()
@@ -210,11 +214,16 @@ final class ActiveRouteViewModel {
         finishedRecording.endedAt = endDate
         finishedRecording.elapsedSeconds = elapsedSeconds
         finishedRecording.averageHeartRateBPM = averageHeartRate
+        finishedRecording.title = ActivityNaming.title(
+            startedAt: finishedRecording.startedAt,
+            activityKind: activityKind,
+            routeName: finishedRecording.routeName
+        )
 
         if preferences.useHealthKitWorkouts {
             _ = await workoutService.finishWorkout(
                 endDate: endDate,
-                routeName: finishedRecording.routeName,
+                routeName: finishedRecording.displayTitle,
                 activityId: finishedRecording.id,
                 totalDistanceMeters: finishedRecording.totalDistanceMeters,
                 activityKind: activityKind
@@ -229,8 +238,10 @@ final class ActiveRouteViewModel {
         ActiveActivityPersistence.clear()
         WatchWidgetStateWriter.clear()
 
+        try? await activityStore.save(finishedRecording)
+
         await RouteNotificationService.notifyActivityComplete(
-            routeName: finishedRecording.routeName,
+            activityTitle: finishedRecording.displayTitle,
             distanceMeters: finishedRecording.totalDistanceMeters,
             elapsedSeconds: elapsedSeconds
         )

@@ -98,16 +98,9 @@ struct RouteMapView: View {
     }
 
     private var focusHint: some View {
-        Button {
+        RouteGlassIconButton(systemName: "scope") {
             uiState.enterMapFocus()
-        } label: {
-            Image(systemName: "scope")
-                .font(.caption)
-                .foregroundStyle(RouteAppearance.overlayText.opacity(0.85))
-                .padding(6)
-                .background(RouteAppearance.overlayFill, in: Circle())
         }
-        .buttonStyle(.plain)
     }
 
     private func fitRoute() {

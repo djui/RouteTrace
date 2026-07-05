@@ -52,7 +52,7 @@ struct RouteDetailView: View {
                             Label("Delete Offline Map", systemImage: "map")
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        .buttonStyle(.bordered)
+                        .routeGlassButton(tint: .red)
                     }
 
                     Button(role: .destructive) {
@@ -61,7 +61,7 @@ struct RouteDetailView: View {
                         Label("Delete Route", systemImage: "trash")
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .buttonStyle(.bordered)
+                    .routeGlassButton(tint: .red)
                 }
                 .padding(.horizontal, Self.contentHorizontalPadding)
                 .padding(.top, 8)
@@ -118,8 +118,7 @@ struct RouteDetailView: View {
                 .font(.headline)
                 .frame(maxWidth: .infinity)
         }
-        .buttonStyle(.borderedProminent)
-        .tint(.green)
+        .routeGlassButton(prominent: true, tint: .green)
         .disabled(isStarting)
     }
 

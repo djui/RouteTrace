@@ -214,23 +214,24 @@ struct CueSymbolMarker: View {
     }
 
     var body: some View {
-        Image(systemName: ActiveRouteMapOverlay.cueSymbol(for: kind))
-            .font(.system(size: symbolSize, weight: .black))
-            .foregroundStyle(foregroundColor)
-            .padding(showsBackground ? markerSize * 0.2 : 0)
-            .background {
-                if showsBackground {
-                    Circle()
-                        .fill(.black.opacity(0.75))
-                }
+        Group {
+            if showsBackground {
+                Image(systemName: ActiveRouteMapOverlay.cueSymbol(for: kind))
+                    .font(.system(size: symbolSize, weight: .black))
+                    .foregroundStyle(foregroundColor)
+                    .padding(markerSize * 0.2)
+                    .routeOverlayBackground(in: Circle())
+                    .overlay {
+                        Circle()
+                            .stroke(.white, lineWidth: 2)
+                    }
+            } else {
+                Image(systemName: ActiveRouteMapOverlay.cueSymbol(for: kind))
+                    .font(.system(size: symbolSize, weight: .black))
+                    .foregroundStyle(foregroundColor)
             }
-            .overlay {
-                if showsBackground {
-                    Circle()
-                        .stroke(.white, lineWidth: 2)
-                }
-            }
-            .rotationEffect(.degrees(rotation))
+        }
+        .rotationEffect(.degrees(rotation))
     }
 }
 
@@ -284,7 +285,7 @@ struct NavigationGuidanceBar: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+        .routeOverlayBackground(in: RoundedRectangle(cornerRadius: 14))
     }
 }
 

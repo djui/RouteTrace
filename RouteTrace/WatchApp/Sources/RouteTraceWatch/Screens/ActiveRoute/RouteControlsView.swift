@@ -24,8 +24,7 @@ struct RouteControlsView: View {
                     .font(.headline)
                     .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(viewModel.isPaused ? .green : .orange)
+                .routeGlassButton(prominent: true, tint: viewModel.isPaused ? .green : .orange)
 
                 Button {
                     viewModel.prepareSummary(preferences: preferences)
@@ -34,8 +33,7 @@ struct RouteControlsView: View {
                         .font(.headline)
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(.red)
+                .routeGlassButton(prominent: true, tint: .red)
 
                 Spacer(minLength: 8)
             }

@@ -47,24 +47,6 @@ struct ActivityListView: View {
                                 Label("Delete", systemImage: "trash")
                             }
                         }
-                        .confirmationDialog(
-                            "Delete this activity?",
-                            isPresented: Binding(
-                                get: { activityPendingDelete?.id == activity.id },
-                                set: { if !$0 { activityPendingDelete = nil } }
-                            ),
-                            titleVisibility: .visible
-                        ) {
-                            Button("Delete Activity", role: .destructive) {
-                                deleteActivity(activity)
-                                activityPendingDelete = nil
-                            }
-                            Button("Cancel", role: .cancel) {
-                                activityPendingDelete = nil
-                            }
-                        } message: {
-                            Text("This removes the activity from your iPhone.")
-                        }
                     }
                 }
             }
@@ -79,6 +61,26 @@ struct ActivityListView: View {
                 if let exportURL {
                     ShareSheet(items: [exportURL])
                 }
+            }
+            .confirmationDialog(
+                "Delete this activity?",
+                isPresented: Binding(
+                    get: { activityPendingDelete != nil },
+                    set: { if !$0 { activityPendingDelete = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("Delete Activity", role: .destructive) {
+                    if let activity = activityPendingDelete {
+                        deleteActivity(activity)
+                        activityPendingDelete = nil
+                    }
+                }
+                Button("Cancel", role: .cancel) {
+                    activityPendingDelete = nil
+                }
+            } message: {
+                Text("This removes the activity from your iPhone.")
             }
             .alert("Activity Error", isPresented: Binding(
                 get: { errorMessage != nil },
@@ -125,7 +127,7 @@ private struct ActivityRowView: View {
             ActivityTrackThumbnail(trackPoints: activity.recording.trackPoints)
 
             VStack(alignment: .leading, spacing: 6) {
-                Text(activity.routeName)
+                Text(activity.displayTitle)
                     .font(.headline)
 
                 HStack(spacing: 8) {

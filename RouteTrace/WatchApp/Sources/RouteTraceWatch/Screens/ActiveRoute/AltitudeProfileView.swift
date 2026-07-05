@@ -5,6 +5,8 @@ struct AltitudeProfileView: View {
     @Bindable var viewModel: ActiveRouteViewModel
     @Bindable var uiState: ActiveRouteUIState
 
+    @FocusState private var altitudeCrownFocused: Bool
+
     @Environment(\.isLuminanceReduced) private var isLuminanceReduced
 
     @State private var idleResetTask: Task<Void, Never>?
@@ -13,6 +15,14 @@ struct AltitudeProfileView: View {
 
     private var progressMeters: Double {
         viewModel.navigationSnapshot?.progressDistanceMeters ?? 0
+    }
+
+    private var routeDistance: Double {
+        viewModel.routePackage?.distanceMeters ?? 0
+    }
+
+    private var altitudeCrownEnabled: Bool {
+        uiState.selectedPage == .altitude && !uiState.isMapFocus && routeDistance > 0
     }
 
     private var markerDistanceMeters: Double {
@@ -52,12 +62,11 @@ struct AltitudeProfileView: View {
             if let route = viewModel.routePackage, route.hasElevationData {
                 let samples = elevationSamples(from: route)
                 ChartContent(
+                    uiState: uiState,
                     samples: samples,
                     progressMeters: progressMeters,
-                    markerDistanceMeters: uiState.altitudeCrownMeters,
                     totalMeters: route.distanceMeters
                 )
-                .id(uiState.altitudeCrownMeters)
                 .frame(maxHeight: .infinity)
 
                 HStack {
@@ -78,6 +87,20 @@ struct AltitudeProfileView: View {
         .padding(.bottom, 28)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .routeScreenBackground()
+        .focusable(altitudeCrownEnabled)
+        .focused($altitudeCrownFocused)
+        .altitudeCrownInteraction(
+            uiState: uiState,
+            routeDistance: routeDistance,
+            progressMeters: progressMeters,
+            isEnabled: altitudeCrownEnabled
+        )
+        .onAppear {
+            requestAltitudeCrownFocus()
+        }
+        .onChange(of: uiState.selectedPage) { _, _ in
+            requestAltitudeCrownFocus()
+        }
         .onChange(of: uiState.isAltitudeScrubbing) { _, isScrubbing in
             if isScrubbing {
                 scheduleIdleReset()
@@ -93,6 +116,20 @@ struct AltitudeProfileView: View {
         .onDisappear {
             idleResetTask?.cancel()
             uiState.clearAltitudeInspect()
+        }
+    }
+
+    private func requestAltitudeCrownFocus() {
+        guard altitudeCrownEnabled else {
+            altitudeCrownFocused = false
+            return
+        }
+
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(100))
+            if altitudeCrownEnabled {
+                altitudeCrownFocused = true
+            }
         }
     }
 
@@ -164,15 +201,16 @@ private struct ElevationSample: Identifiable {
 }
 
 private struct ChartContent: View {
+    @Bindable var uiState: ActiveRouteUIState
     let samples: [ElevationSample]
     let progressMeters: Double
-    let markerDistanceMeters: Double
     let totalMeters: Double
 
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         GeometryReader { proxy in
+            let markerDistanceMeters = uiState.altitudeCrownMeters
             let minElevation = samples.map(\.elevationMeters).min() ?? 0
             let maxElevation = samples.map(\.elevationMeters).max() ?? 1
             let elevationRange = max(1, maxElevation - minElevation)
@@ -277,38 +315,16 @@ private struct ChartContent: View {
     }
 }
 
-struct AltitudeCrownLayer: View {
-    @Bindable var uiState: ActiveRouteUIState
-    let routeDistance: Double
-    let progressMeters: Double
-    var carouselCrownFocus: FocusState<CarouselCrownFocus?>.Binding
-
-    var body: some View {
-        Color.clear
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .allowsHitTesting(false)
-            .focused(carouselCrownFocus, equals: .altitude)
-            .altitudeCrownInteraction(
-                uiState: uiState,
-                routeDistance: routeDistance,
-                progressMeters: progressMeters
-            )
-    }
-}
-
 private struct AltitudeCrownInteraction: ViewModifier {
     @Bindable var uiState: ActiveRouteUIState
     let routeDistance: Double
     let progressMeters: Double
+    let isEnabled: Bool
 
     @State private var isSyncingCrown = false
 
     private var crownStep: Double {
         max(5, routeDistance / 80)
-    }
-
-    private var isCrownEnabled: Bool {
-        routeDistance > 0
     }
 
     private var altitudeCrownBinding: Binding<Double> {
@@ -326,9 +342,8 @@ private struct AltitudeCrownInteraction: ViewModifier {
     }
 
     func body(content: Content) -> some View {
-        if isCrownEnabled {
+        if isEnabled {
             content
-                .focusable(true)
                 .digitalCrownRotation(
                     altitudeCrownBinding,
                     from: 0,
@@ -374,12 +389,14 @@ private extension View {
     func altitudeCrownInteraction(
         uiState: ActiveRouteUIState,
         routeDistance: Double,
-        progressMeters: Double
+        progressMeters: Double,
+        isEnabled: Bool
     ) -> some View {
         modifier(AltitudeCrownInteraction(
             uiState: uiState,
             routeDistance: routeDistance,
-            progressMeters: progressMeters
+            progressMeters: progressMeters,
+            isEnabled: isEnabled
         ))
     }
 }

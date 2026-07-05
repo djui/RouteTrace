@@ -142,6 +142,7 @@ final class ActivityEntity {
     var id: UUID = UUID()
     var routeId: UUID = UUID()
     var routeName: String = ""
+    var title: String?
     var startedAt: Date = Date()
     var endedAt: Date?
     var activityKindRaw: String = ActivityKind.running.rawValue
@@ -158,6 +159,7 @@ final class ActivityEntity {
         id: UUID = UUID(),
         routeId: UUID,
         routeName: String,
+        title: String? = nil,
         startedAt: Date,
         endedAt: Date? = nil,
         activityKind: ActivityKind,
@@ -172,6 +174,7 @@ final class ActivityEntity {
         self.id = id
         self.routeId = routeId
         self.routeName = routeName
+        self.title = title
         self.startedAt = startedAt
         self.endedAt = endedAt
         self.activityKindRaw = activityKind.rawValue
@@ -186,6 +189,7 @@ final class ActivityEntity {
             id: id,
             routeId: routeId,
             routeName: routeName,
+            title: title,
             startedAt: startedAt,
             endedAt: endedAt,
             activityKind: activityKind,
@@ -220,11 +224,16 @@ final class ActivityEntity {
         return recording
     }
 
+    var displayTitle: String {
+        title ?? routeName
+    }
+
     var recording: ActivityRecording {
         ActivityRecording(
             id: id,
             routeId: routeId,
             routeName: routeName,
+            title: title,
             startedAt: startedAt,
             endedAt: endedAt,
             activityKind: activityKind,
@@ -242,6 +251,7 @@ final class ActivityEntity {
             id: recording.id,
             routeId: recording.routeId,
             routeName: recording.routeName,
+            title: recording.title,
             startedAt: recording.startedAt,
             endedAt: recording.endedAt,
             activityKind: recording.activityKind,

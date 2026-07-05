@@ -3,19 +3,21 @@ import SwiftUI
 
 struct RouteListView: View {
     @Environment(WatchRouteStore.self) private var routeStore
+    @Environment(WatchActivityStore.self) private var activityStore
     @Environment(WatchConnectivityManager.self) private var connectivity
     @Environment(WatchPreferences.self) private var preferences
     @State private var activeViewModel = ActiveRouteViewModel()
     @State private var showingSettings = false
     @State private var didAttemptRestore = false
     @State private var routePendingDelete: RoutePackage?
+    @State private var activityPendingDelete: ActivityRecording?
 
     var body: some View {
         Group {
             if activeViewModel.isActive {
                 ActiveRouteContainerView(viewModel: activeViewModel)
             } else {
-                routesNavigationStack
+                libraryNavigationStack
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: RouteTraceIntentNotifications.pauseResumeActivity)) { _ in
@@ -33,41 +35,27 @@ struct RouteListView: View {
             guard !didAttemptRestore else { return }
             didAttemptRestore = true
             await routeStore.reload()
+            await activityStore.reload()
             _ = await activeViewModel.restoreIfNeeded(from: routeStore, preferences: preferences)
         }
     }
 
-    private var routesNavigationStack: some View {
+    private var libraryNavigationStack: some View {
         NavigationStack {
             Group {
-                if routeStore.isLoading && routeStore.routes.isEmpty {
-                    ProgressView("Loading routes…")
-                } else if routeStore.routes.isEmpty {
+                if isLoadingLibrary && routeStore.routes.isEmpty && activityStore.activities.isEmpty {
+                    ProgressView("Loading…")
+                } else if routeStore.routes.isEmpty && activityStore.activities.isEmpty {
                     ContentUnavailableView(
                         "No Routes",
                         systemImage: "map",
                         description: Text("Transfer a route from your iPhone to get started.")
                     )
                 } else {
-                    List {
-                        Section {
-                            ForEach(routeStore.routes) { route in
-                                NavigationLink(value: route.id) {
-                                    RouteRowView(route: route)
-                                }
-                                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                    Button(role: .destructive) {
-                                        routePendingDelete = route
-                                    } label: {
-                                        Label("Delete", systemImage: "trash")
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    libraryList
                 }
             }
-            .navigationTitle("Routes")
+            .navigationTitle("RouteTrace")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -78,9 +66,11 @@ struct RouteListView: View {
                     }
                 }
             }
-            .navigationDestination(for: UUID.self) { routeID in
-                if let route = routeStore.route(with: routeID) {
+            .navigationDestination(for: UUID.self) { id in
+                if let route = routeStore.route(with: id) {
                     RouteDetailView(route: route, activeViewModel: activeViewModel)
+                } else if let activity = activityStore.activity(with: id) {
+                    WatchActivityDetailView(activity: activity)
                 }
             }
             .confirmationDialog(
@@ -103,11 +93,80 @@ struct RouteListView: View {
                     routePendingDelete = nil
                 }
             }
+            .confirmationDialog(
+                "Remove from Watch?",
+                isPresented: Binding(
+                    get: { activityPendingDelete != nil },
+                    set: { if !$0 { activityPendingDelete = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("Remove", role: .destructive) {
+                    if let activity = activityPendingDelete {
+                        Task {
+                            try? await activityStore.delete(id: activity.id)
+                            activityPendingDelete = nil
+                        }
+                    }
+                }
+                Button("Cancel", role: .cancel) {
+                    activityPendingDelete = nil
+                }
+            } message: {
+                Text("This only removes the activity from your Apple Watch. Your iPhone copy is not affected.")
+            }
             .navigationDestination(isPresented: $showingSettings) {
                 SettingsView()
             }
             .refreshable {
                 await routeStore.reload()
+                await activityStore.reload()
+            }
+        }
+    }
+
+    private var isLoadingLibrary: Bool {
+        routeStore.isLoading || activityStore.isLoading
+    }
+
+    private var libraryList: some View {
+        List {
+            if !routeStore.routes.isEmpty {
+                Section("Routes") {
+                    ForEach(routeStore.routes) { route in
+                        NavigationLink(value: route.id) {
+                            RouteRowView(route: route)
+                        }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button(role: .destructive) {
+                                routePendingDelete = route
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
+                    }
+                }
+            }
+
+            Section("Activities") {
+                if activityStore.activities.isEmpty {
+                    Text("No completed activities yet.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(activityStore.activities) { activity in
+                        NavigationLink(value: activity.id) {
+                            WatchActivityRowView(activity: activity)
+                        }
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button(role: .destructive) {
+                                activityPendingDelete = activity
+                            } label: {
+                                Label("Remove", systemImage: "trash")
+                            }
+                        }
+                    }
+                }
             }
         }
     }

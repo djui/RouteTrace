@@ -177,6 +177,32 @@ final class RouteTraceSharedTests: XCTestCase {
         XCTAssertEqual(segments.count, 2)
     }
 
+    func testActivityNamingTitle() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+
+        let morning = calendar.date(from: DateComponents(year: 2026, month: 7, day: 5, hour: 8))!
+        XCTAssertEqual(
+            ActivityNaming.title(startedAt: morning, activityKind: .running, routeName: "Forest Loop", calendar: calendar),
+            "Morning run (Forest Loop)"
+        )
+
+        let lateAfternoon = calendar.date(from: DateComponents(year: 2026, month: 7, day: 5, hour: 18))!
+        XCTAssertEqual(
+            ActivityNaming.title(startedAt: lateAfternoon, activityKind: .gravelCycling, routeName: "Gravel 40", calendar: calendar),
+            "Late afternoon gravel biking (Gravel 40)"
+        )
+    }
+
+    func testActivityRecordingDisplayTitleFallsBackToRouteName() {
+        let recording = ActivityRecording(
+            routeId: UUID(),
+            routeName: "Loop",
+            activityKind: .running
+        )
+        XCTAssertEqual(recording.displayTitle, "Loop")
+    }
+
     func testGPXExportActivityEmitsSeparateTrackSegments() {
         let base = Date(timeIntervalSince1970: 1_700_000_000)
         let activity = ActivityRecording(

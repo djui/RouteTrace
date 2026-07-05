@@ -64,6 +64,7 @@ public struct ActivityRecording: Codable, Sendable, Identifiable {
     public let id: UUID
     public let routeId: UUID
     public let routeName: String
+    public var title: String?
     public let startedAt: Date
     public var endedAt: Date?
     public let activityKind: ActivityKind
@@ -76,10 +77,15 @@ public struct ActivityRecording: Codable, Sendable, Identifiable {
 
     public var isActive: Bool { endedAt == nil }
 
+    public var displayTitle: String {
+        title ?? routeName
+    }
+
     public init(
         id: UUID = UUID(),
         routeId: UUID,
         routeName: String,
+        title: String? = nil,
         startedAt: Date = Date(),
         endedAt: Date? = nil,
         activityKind: ActivityKind,
@@ -93,6 +99,7 @@ public struct ActivityRecording: Codable, Sendable, Identifiable {
         self.id = id
         self.routeId = routeId
         self.routeName = routeName
+        self.title = title
         self.startedAt = startedAt
         self.endedAt = endedAt
         self.activityKind = activityKind

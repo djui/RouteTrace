@@ -85,7 +85,7 @@ struct ActivityResultView: View {
             }
             .padding()
         }
-        .navigationTitle(activity.routeName)
+        .navigationTitle(activity.displayTitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -123,7 +123,7 @@ struct ActivityResultView: View {
         }
         .fullScreenCover(isPresented: $isMapFullscreenPresented) {
             ActivityMapFullscreenView(
-                routeName: activity.routeName,
+                routeName: activity.displayTitle,
                 distanceLabel: RouteFormatting.distance(gpsDistanceMeters),
                 routePoints: plannedRoute?.route ?? [],
                 trackPoints: recording.trackPoints

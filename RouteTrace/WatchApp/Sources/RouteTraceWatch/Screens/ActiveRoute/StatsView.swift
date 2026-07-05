@@ -69,7 +69,7 @@ struct StatsView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 6)
         .padding(.horizontal, 8)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .routeOverlayBackground(in: RoundedRectangle(cornerRadius: 8))
         .padding(.top, 4)
     }
 

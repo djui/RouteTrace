@@ -6,6 +6,7 @@ struct ActivitySummaryView: View {
 
     @Environment(WatchPreferences.self) private var preferences
     @Environment(WatchConnectivityManager.self) private var connectivity
+    @Environment(WatchActivityStore.self) private var activityStore
 
     @State private var isSaving = false
 
@@ -16,12 +17,21 @@ struct ActivitySummaryView: View {
         preferences.speedDisplayMode(for: viewModel.activityKind)
     }
 
+    private var activityTitle: String {
+        ActivityNaming.title(
+            startedAt: viewModel.recording.startedAt,
+            activityKind: viewModel.activityKind,
+            routeName: viewModel.recording.routeName
+        )
+    }
+
     var body: some View {
         ZStack(alignment: .bottom) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Activity Summary")
+                    Text(activityTitle)
                         .font(.headline)
+                        .lineLimit(2)
 
                     summaryRow("Elapsed", RouteFormatting.duration(viewModel.elapsedSeconds), "clock")
                     summaryRow("Distance", RouteFormatting.distance(viewModel.recording.totalDistanceMeters), "ruler")
@@ -49,17 +59,28 @@ struct ActivitySummaryView: View {
                         Text("Discard")
                             .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.bordered)
+                    .routeGlassButton(tint: .red)
+                    .disabled(isSaving)
                 }
                 .padding(.horizontal, Self.contentHorizontalPadding)
                 .padding(.top, 16)
                 .padding(.bottom, Self.floatingSaveClearance)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .blur(radius: isSaving ? 4 : 0)
+            .allowsHitTesting(!isSaving)
 
-            saveButton
-                .padding(.horizontal, Self.contentHorizontalPadding)
-                .padding(.bottom, RouteAppearance.watchFloatingButtonBottomInset)
+            if isSaving {
+                ProgressView()
+                    .controlSize(.large)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+
+            if !isSaving {
+                saveButton
+                    .padding(.horizontal, Self.contentHorizontalPadding)
+                    .padding(.bottom, RouteAppearance.watchFloatingButtonBottomInset)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .ignoresSafeArea(edges: .bottom)
@@ -68,11 +89,10 @@ struct ActivitySummaryView: View {
         .navigationBarBackButtonHidden(true)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
-                Button {
+                RouteGlassIconButton(systemName: "xmark") {
                     viewModel.cancelSummary()
-                } label: {
-                    Image(systemName: "xmark")
                 }
+                .disabled(isSaving)
             }
         }
     }
@@ -81,22 +101,19 @@ struct ActivitySummaryView: View {
         Button {
             Task {
                 isSaving = true
-                await viewModel.commitFinish(preferences: preferences, connectivity: connectivity)
+                await viewModel.commitFinish(
+                    preferences: preferences,
+                    connectivity: connectivity,
+                    activityStore: activityStore
+                )
                 isSaving = false
             }
         } label: {
-            if isSaving {
-                ProgressView()
-                    .frame(maxWidth: .infinity)
-            } else {
-                Text("Save")
-                    .font(.headline)
-                    .frame(maxWidth: .infinity)
-            }
+            Text("Save")
+                .font(.headline)
+                .frame(maxWidth: .infinity)
         }
-        .buttonStyle(.borderedProminent)
-        .tint(.green)
-        .disabled(isSaving)
+        .routeGlassButton(prominent: true, tint: .green)
     }
 
     private var heartRateLabel: String {

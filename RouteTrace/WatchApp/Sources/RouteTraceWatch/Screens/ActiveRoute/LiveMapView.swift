@@ -9,6 +9,8 @@ struct LiveMapView: View {
     @Environment(WatchPreferences.self) private var preferences
     @Environment(WatchRouteStore.self) private var routeStore
 
+    @FocusState private var mapCrownFocused: Bool
+
     @State private var cameraPosition: MapCameraPosition = .automatic
     @State private var offlineRecenterToken = 0
 
@@ -17,7 +19,7 @@ struct LiveMapView: View {
     }
 
     private var crownEnabled: Bool {
-        uiState.isMapFocus
+        uiState.isMapFocus || (uiState.selectedPage == .liveMap && !uiState.isMapFocus)
     }
 
     private var usesOfflineTiles: Bool {
@@ -43,6 +45,13 @@ struct LiveMapView: View {
             if !isFocused {
                 recenterIfNeeded()
             }
+            requestMapCrownFocus()
+        }
+        .onChange(of: uiState.selectedPage) { _, _ in
+            requestMapCrownFocus()
+        }
+        .onChange(of: uiState.isMapFocus) { _, _ in
+            requestMapCrownFocus()
         }
     }
 
@@ -86,6 +95,8 @@ struct LiveMapView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .focusable(crownEnabled)
+        .focused($mapCrownFocused)
         .modifier(MapCrownInteraction(
             isEnabled: crownEnabled,
             hapticFeedback: isFocused,
@@ -96,18 +107,10 @@ struct LiveMapView: View {
     private var mapFocusExitButton: some View {
         VStack(spacing: 0) {
             HStack(alignment: .top) {
-                Button {
+                RouteGlassIconButton(systemName: "xmark") {
                     uiState.exitMapFocus()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(RouteAppearance.overlayText.opacity(0.85))
-                        .padding(8)
-                        .background(RouteAppearance.overlayFill, in: Circle())
                 }
-                .buttonStyle(.plain)
                 .frame(minWidth: 36, minHeight: 36)
-                .contentShape(Circle())
 
                 Spacer(minLength: 0)
             }
@@ -164,6 +167,20 @@ struct LiveMapView: View {
         )
     }
 
+    private func requestMapCrownFocus() {
+        guard crownEnabled else {
+            mapCrownFocused = false
+            return
+        }
+
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(100))
+            if crownEnabled {
+                mapCrownFocused = true
+            }
+        }
+    }
+
     private func enterMapFocusIfNeeded() {
         guard !uiState.isMapFocus else { return }
         uiState.selectedPage = .liveMap
@@ -202,23 +219,6 @@ struct LiveMapView: View {
     }
 }
 
-struct BrowseMapCrownLayer: View {
-    @Bindable var uiState: ActiveRouteUIState
-    var carouselCrownFocus: FocusState<CarouselCrownFocus?>.Binding
-
-    var body: some View {
-        Color.clear
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .allowsHitTesting(false)
-            .focused(carouselCrownFocus, equals: .liveMap)
-            .modifier(MapCrownInteraction(
-                isEnabled: true,
-                hapticFeedback: true,
-                mapSpan: $uiState.mapSpan
-            ))
-    }
-}
-
 struct MapCrownInteraction: ViewModifier {
     let isEnabled: Bool
     let hapticFeedback: Bool
@@ -227,7 +227,6 @@ struct MapCrownInteraction: ViewModifier {
     func body(content: Content) -> some View {
         if isEnabled {
             content
-                .focusable(true)
                 .digitalCrownRotation(
                     $mapSpan,
                     from: 0.002,

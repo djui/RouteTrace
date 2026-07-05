@@ -31,10 +31,14 @@ struct RouteLibraryView: View {
                     } description: {
                         Text("Import a GPX file to get started.")
                     } actions: {
-                        Button("Import GPX") {
+                        Button {
                             isShowingImport = true
+                        } label: {
+                            Label("Import GPX", systemImage: "square.and.arrow.down")
+                                .font(.headline)
                         }
                         .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
                     }
                 } else {
                     List(routes) { route in
@@ -60,24 +64,6 @@ struct RouteLibraryView: View {
                             } label: {
                                 Label("Delete", systemImage: "trash")
                             }
-                        }
-                        .confirmationDialog(
-                            "Delete this route?",
-                            isPresented: Binding(
-                                get: { routePendingDelete?.id == route.id },
-                                set: { if !$0 { routePendingDelete = nil } }
-                            ),
-                            titleVisibility: .visible
-                        ) {
-                            Button("Delete Route", role: .destructive) {
-                                deleteRoute(route)
-                                routePendingDelete = nil
-                            }
-                            Button("Cancel", role: .cancel) {
-                                routePendingDelete = nil
-                            }
-                        } message: {
-                            Text("This removes the route and any offline map pack from your iPhone.")
                         }
                     }
                 }
@@ -105,6 +91,26 @@ struct RouteLibraryView: View {
                 if let exportURL {
                     ShareSheet(items: [exportURL])
                 }
+            }
+            .confirmationDialog(
+                "Delete this route?",
+                isPresented: Binding(
+                    get: { routePendingDelete != nil },
+                    set: { if !$0 { routePendingDelete = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("Delete Route", role: .destructive) {
+                    if let route = routePendingDelete {
+                        deleteRoute(route)
+                        routePendingDelete = nil
+                    }
+                }
+                Button("Cancel", role: .cancel) {
+                    routePendingDelete = nil
+                }
+            } message: {
+                Text("This removes the route and any offline map pack from your iPhone.")
             }
             .alert("Route Error", isPresented: Binding(
                 get: { errorMessage != nil },

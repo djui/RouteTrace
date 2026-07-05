@@ -10,8 +10,8 @@ enum RouteAppearance {
         }
     }
 
-    static var overlayFill: Material {
-        .ultraThinMaterial
+    static var overlayGlass: Glass {
+        .regular
     }
 
     static var overlayText: Color {
@@ -94,6 +94,21 @@ enum RouteAppearance {
     }
 }
 
+struct RouteGlassIconButton: View {
+    let systemName: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(RouteAppearance.overlayText.opacity(0.85))
+        }
+        .buttonStyle(.glass)
+        .buttonBorderShape(.circle)
+    }
+}
+
 extension View {
     func routeScreenBackground() -> some View {
         background {
@@ -107,6 +122,25 @@ extension View {
             routeScreenBackground()
         } else {
             self
+        }
+    }
+
+    func routeOverlayBackground<S: Shape>(in shape: S) -> some View {
+        glassEffect(RouteAppearance.overlayGlass, in: shape)
+    }
+
+    @ViewBuilder
+    func routeGlassButton(prominent: Bool = false, tint: Color? = nil) -> some View {
+        if prominent {
+            if let tint {
+                self.buttonStyle(.glassProminent).tint(tint)
+            } else {
+                self.buttonStyle(.glassProminent)
+            }
+        } else if let tint {
+            self.buttonStyle(.glass).tint(tint)
+        } else {
+            self.buttonStyle(.glass)
         }
     }
 }

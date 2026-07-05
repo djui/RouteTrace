@@ -57,11 +57,11 @@ enum RouteNotificationService {
         )
     }
 
-    static func notifyActivityComplete(routeName: String, distanceMeters: Double, elapsedSeconds: TimeInterval) async {
+    static func notifyActivityComplete(activityTitle: String, distanceMeters: Double, elapsedSeconds: TimeInterval) async {
         await deliver(
             identifier: "routetrace.activity.complete.\(UUID().uuidString)",
             title: "Activity Complete",
-            body: "\(routeName): \(RouteFormatting.distance(distanceMeters)) in \(RouteFormatting.duration(elapsedSeconds))",
+            body: "\(activityTitle): \(RouteFormatting.distance(distanceMeters)) in \(RouteFormatting.duration(elapsedSeconds))",
             interruptionLevel: .passive,
             sound: nil
         )
