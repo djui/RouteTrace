@@ -28,9 +28,7 @@ public struct RouteProcessor {
         )
 
         let name = customName
-            ?? parsed.tracks.first?.name
-            ?? parsed.routes.first?.name
-            ?? parsed.metadataName
+            ?? parsed.importName
             ?? sourceFileName.replacingOccurrences(of: ".gpx", with: "")
 
         let navigationWarning = RouteNavigationQuality.warning(
