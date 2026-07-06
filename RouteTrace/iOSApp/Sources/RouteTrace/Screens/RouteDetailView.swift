@@ -14,6 +14,7 @@ struct RouteDetailView: View {
     @State private var routePackage: RoutePackage?
     @State private var isLoading = true
     @State private var isBuildingOfflinePack = false
+    @State private var offlineBuildProgress: OfflinePackBuildProgress?
     @State private var isDeletingOfflinePack = false
     @State private var isSendingToWatch = false
     @State private var isUpdatingActivityKind = false
@@ -230,6 +231,7 @@ struct RouteDetailView: View {
                 tileCount: route.offlineTileCount,
                 packSizeBytes: route.offlinePackSizeBytes,
                 isBuilding: isBuildingOfflinePack,
+                buildProgress: offlineBuildProgress,
                 isDeleting: isDeletingOfflinePack,
                 onBuild: { Task { await buildOfflinePack() } },
                 onDelete: route.offlineStatus == .missing ? nil : { Task { await deleteOfflinePack() } }
@@ -327,9 +329,15 @@ struct RouteDetailView: View {
     @MainActor
     private func buildOfflinePack() async {
         isBuildingOfflinePack = true
-        defer { isBuildingOfflinePack = false }
+        offlineBuildProgress = nil
+        defer {
+            isBuildingOfflinePack = false
+            offlineBuildProgress = nil
+        }
         do {
-            _ = try await routeStore.buildOfflinePack(for: route)
+            _ = try await routeStore.buildOfflinePack(for: route) { progress in
+                offlineBuildProgress = progress
+            }
             routePackage = try routeStore.loadRoutePackage(for: route)
         } catch RouteStoreError.offlinePackSavedArchiveFailed {
             routePackage = try? routeStore.loadRoutePackage(for: route)
@@ -488,6 +496,7 @@ private struct OfflineMapControls: View {
     let tileCount: Int
     let packSizeBytes: Int64
     let isBuilding: Bool
+    var buildProgress: OfflinePackBuildProgress?
     var isDeleting: Bool = false
     let onBuild: () -> Void
     var onDelete: (() -> Void)?
@@ -495,22 +504,16 @@ private struct OfflineMapControls: View {
     @State private var showDeleteConfirm = false
 
     var body: some View {
-        if status == .missing {
+        if isBuilding {
+            offlineBuildProgressCard
+        } else if status == .missing {
             Button(action: onBuild) {
-                HStack {
-                    if isBuilding {
-                        ProgressView()
-                        Text("Building…")
-                    } else {
-                        Label("Download Offline Map", systemImage: "map.fill")
-                    }
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 4)
+                Label("Download Offline Map", systemImage: "map.fill")
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 4)
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
-            .disabled(isBuilding)
         } else {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 8) {
@@ -523,18 +526,10 @@ private struct OfflineMapControls: View {
 
                 HStack(spacing: 12) {
                     Button(action: onBuild) {
-                        if isBuilding {
-                            HStack(spacing: 6) {
-                                ProgressView()
-                                    .controlSize(.small)
-                                Text("Building…")
-                            }
-                        } else {
-                            Text("Rebuild")
-                        }
+                        Text("Rebuild")
                     }
                     .buttonStyle(.bordered)
-                    .disabled(isBuilding || isDeleting)
+                    .disabled(isDeleting)
 
                     if let onDelete {
                         Button(role: .destructive) {
@@ -543,7 +538,7 @@ private struct OfflineMapControls: View {
                             Text("Delete")
                         }
                         .buttonStyle(.borderless)
-                        .disabled(isDeleting || isBuilding)
+                        .disabled(isDeleting)
                         .confirmationDialog("Delete offline map?", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
                             Button("Delete Map", role: .destructive) {
                                 onDelete()
@@ -556,6 +551,28 @@ private struct OfflineMapControls: View {
                 }
             }
         }
+    }
+
+    private var offlineBuildProgressCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Building offline map…")
+                .font(.subheadline.weight(.semibold))
+
+            if let buildProgress {
+                ProgressView(value: buildProgress.fractionComplete)
+                Text(buildProgress.statusText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ProgressView()
+                Text("Preparing…")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 12))
     }
 
     private var statusIcon: String {

@@ -262,10 +262,17 @@ final class RouteStore: ObservableObject {
         return refreshed
     }
 
-    func buildOfflinePack(for entity: RouteEntity) async throws -> RouteEntity {
+    func buildOfflinePack(
+        for entity: RouteEntity,
+        onProgress: ((OfflinePackBuildProgress) -> Void)? = nil
+    ) async throws -> RouteEntity {
         var package = try loadRoutePackage(for: entity)
         let builder = OfflinePackBuilder()
-        let updated = try await builder.buildPack(for: package, into: entity.routeDirectoryURL)
+        let updated = try await builder.buildPack(
+            for: package,
+            into: entity.routeDirectoryURL,
+            onProgress: onProgress
+        )
         package = updated
         let saved = try persistRoutePackage(updated)
         let archiveURL = RoutePackaging.makeArchiveURL(for: updated, in: RouteTracePaths.routesRoot)

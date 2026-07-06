@@ -18,7 +18,8 @@ final class RouteImportService {
         customName: String?,
         activityHint: ActivityKind,
         buildOfflinePack: Bool = false,
-        reverseDirection: Bool = false
+        reverseDirection: Bool = false,
+        onOfflineBuildProgress: ((OfflinePackBuildProgress) -> Void)? = nil
     ) async throws -> RouteEntity {
         let parsed = try parser.parse(data: data)
         let package = processor.makeRoutePackage(
@@ -45,7 +46,10 @@ final class RouteImportService {
         }
 
         if buildOfflinePack {
-            return try await routeStore.buildOfflinePack(for: entity)
+            return try await routeStore.buildOfflinePack(
+                for: entity,
+                onProgress: onOfflineBuildProgress
+            )
         }
 
         return entity

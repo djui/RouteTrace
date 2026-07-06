@@ -20,6 +20,7 @@ struct ImportRouteView: View {
     @State private var buildOfflinePack = false
     @State private var reverseDirection = false
     @State private var isImporting = false
+    @State private var importProgress: OfflinePackBuildProgress?
     @State private var errorMessage: String?
     @State private var navigationWarning: String?
 
@@ -114,9 +115,7 @@ struct ImportRouteView: View {
             }
             .overlay {
                 if isImporting {
-                    ProgressView("Importing route…")
-                        .padding()
-                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                    importProgressOverlay
                 }
             }
             .onAppear {
@@ -179,8 +178,12 @@ struct ImportRouteView: View {
     private func saveRoute() async {
         guard let url = selectedFileURL else { return }
         isImporting = true
+        importProgress = nil
         errorMessage = nil
-        defer { isImporting = false }
+        defer {
+            isImporting = false
+            importProgress = nil
+        }
 
         do {
             let accessed = url.startAccessingSecurityScopedResource()
@@ -195,13 +198,34 @@ struct ImportRouteView: View {
                 customName: routeName,
                 activityHint: selectedActivity,
                 buildOfflinePack: buildOfflinePack,
-                reverseDirection: reverseDirection
+                reverseDirection: reverseDirection,
+                onOfflineBuildProgress: { progress in
+                    importProgress = progress
+                }
             )
             incomingGPX.clearPending()
             dismiss()
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    @ViewBuilder
+    private var importProgressOverlay: some View {
+        VStack(spacing: 10) {
+            if let importProgress {
+                Text("Building offline map…")
+                    .font(.subheadline.weight(.semibold))
+                ProgressView(value: importProgress.fractionComplete)
+                Text(importProgress.statusText)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ProgressView("Importing route…")
+            }
+        }
+        .padding()
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
     }
 }
 

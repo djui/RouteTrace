@@ -65,6 +65,42 @@ public enum OfflineTilePlanner {
     }
 }
 
+public struct OfflinePackBuildProgress: Sendable {
+    public enum Phase: Sendable {
+        case generatingTiles
+        case finalizing
+    }
+
+    public let phase: Phase
+    public let completedTiles: Int
+    public let totalTiles: Int
+
+    public init(phase: Phase, completedTiles: Int, totalTiles: Int) {
+        self.phase = phase
+        self.completedTiles = completedTiles
+        self.totalTiles = totalTiles
+    }
+
+    public var fractionComplete: Double {
+        switch phase {
+        case .generatingTiles:
+            guard totalTiles > 0 else { return 0 }
+            return Double(completedTiles) / Double(totalTiles)
+        case .finalizing:
+            return 1
+        }
+    }
+
+    public var statusText: String {
+        switch phase {
+        case .generatingTiles:
+            "\(completedTiles) of \(totalTiles) tiles"
+        case .finalizing:
+            "Finalizing…"
+        }
+    }
+}
+
 #if canImport(MapKit) && os(iOS)
 @MainActor
 public final class OfflinePackBuilder {
@@ -88,13 +124,22 @@ public final class OfflinePackBuilder {
 
     public func buildPack(
         for package: RoutePackage,
-        into routeDirectory: URL
+        into routeDirectory: URL,
+        onProgress: ((OfflinePackBuildProgress) -> Void)? = nil
     ) async throws -> RoutePackage {
         let tiles = OfflineTilePlanner.tiles(
             for: package.route,
             bufferMeters: package.activityHint.corridorBufferMeters,
             minZoom: package.distanceMeters > 200_000 ? 13 : 13,
             maxZoom: package.distanceMeters > 200_000 ? 14 : 15
+        )
+
+        onProgress?(
+            OfflinePackBuildProgress(
+                phase: .generatingTiles,
+                completedTiles: 0,
+                totalTiles: tiles.count
+            )
         )
 
         let tilesDirectory = routeDirectory.appendingPathComponent("tiles", isDirectory: true)
@@ -120,6 +165,13 @@ public final class OfflinePackBuilder {
                 }
                 writtenTiles.append(tile)
                 totalBytes += Int64(data.count)
+                onProgress?(
+                    OfflinePackBuildProgress(
+                        phase: .generatingTiles,
+                        completedTiles: writtenTiles.count,
+                        totalTiles: tiles.count
+                    )
+                )
                 if totalBytes > maxPackBytes {
                     throw BuildError.packTooLarge(totalBytes)
                 }
@@ -140,6 +192,14 @@ public final class OfflinePackBuilder {
                 throw BuildError.snapshotFailed
             }
         }
+
+        onProgress?(
+            OfflinePackBuildProgress(
+                phase: .finalizing,
+                completedTiles: tiles.count,
+                totalTiles: tiles.count
+            )
+        )
 
         let manifest = OfflineMapManifest(
             packBuiltAt: Date(),
