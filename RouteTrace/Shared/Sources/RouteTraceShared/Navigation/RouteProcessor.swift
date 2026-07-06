@@ -7,25 +7,14 @@ public struct RouteProcessor {
         from parsed: ParsedGPX,
         sourceFileName: String,
         activityHint: ActivityKind,
-        customName: String? = nil
+        customName: String? = nil,
+        reverseDirection: Bool = false
     ) -> RoutePackage {
         let rawPoints = parsed.primaryTrackPoints
         let validPoints = rawPoints.filter {
             MapMath.isValidCoordinate(latitude: $0.latitude, longitude: $0.longitude)
         }
-
-        let fullRoute = buildRoutePoints(from: validPoints)
-        let simplified = simplify(route: fullRoute, toleranceMeters: activityHint.simplificationToleranceMeters)
-        let navigationRoute = densify(
-            route: simplified,
-            maxSegmentMeters: activityHint.navigationDensifyMaxSegmentMeters
-        )
-        let cues = RouteCueGenerator().generate(route: simplified)
-        let (gain, loss) = elevationStats(for: fullRoute)
-        let coordinates = fullRoute.map(\.coordinate)
-        let boundingBox = MapMath.boundingBox(for: coordinates) ?? GeoBoundingBox(
-            minLatitude: 0, maxLatitude: 0, minLongitude: 0, maxLongitude: 0
-        )
+        let orderedPoints = reverseDirection ? Array(validPoints.reversed()) : validPoints
 
         let name = customName
             ?? parsed.tracks.first?.name
@@ -33,42 +22,75 @@ public struct RouteProcessor {
             ?? parsed.metadataName
             ?? sourceFileName.replacingOccurrences(of: ".gpx", with: "")
 
-        let navigationWarning = RouteNavigationQuality.warning(
-            distanceMeters: fullRoute.last?.distanceFromStartMeters ?? 0,
-            originalPointCount: validPoints.count,
-            simplifiedPointCount: simplified.count
-        )
-
-        return RoutePackage(
+        return buildRoutePackage(
             id: UUID(),
             name: name,
             sourceFileName: sourceFileName,
             importedAt: Date(),
             activityHint: activityHint,
-            distanceMeters: fullRoute.last?.distanceFromStartMeters ?? 0,
-            elevationGainMeters: gain,
-            elevationLossMeters: loss,
-            boundingBox: boundingBox,
-            originalPointCount: validPoints.count,
-            simplifiedPointCount: simplified.count,
-            route: navigationRoute,
-            cues: cues,
-            offlineMapManifest: nil,
-            navigationWarning: navigationWarning
+            points: orderedPoints,
+            offlineMapManifest: nil
         )
     }
 
     public func reprocessPackage(
         _ existing: RoutePackage,
         parsed: ParsedGPX,
-        activityHint: ActivityKind
+        activityHint: ActivityKind,
+        reverseDirection: Bool = false
     ) -> RoutePackage {
         let rawPoints = parsed.primaryTrackPoints
         let validPoints = rawPoints.filter {
             MapMath.isValidCoordinate(latitude: $0.latitude, longitude: $0.longitude)
         }
+        let orderedPoints = reverseDirection ? Array(validPoints.reversed()) : validPoints
 
-        let fullRoute = buildRoutePoints(from: validPoints)
+        return buildRoutePackage(
+            id: existing.id,
+            name: existing.name,
+            sourceFileName: existing.sourceFileName,
+            importedAt: existing.importedAt,
+            activityHint: activityHint,
+            points: orderedPoints,
+            offlineMapManifest: nil,
+            fallbackBoundingBox: existing.boundingBox
+        )
+    }
+
+    public func reversePackage(_ existing: RoutePackage) -> RoutePackage {
+        let points = existing.route.map {
+            ParsedGPXPoint(
+                latitude: $0.latitude,
+                longitude: $0.longitude,
+                elevationMeters: $0.elevationMeters,
+                timestamp: nil
+            )
+        }
+        let orderedPoints = Array(points.reversed())
+
+        return buildRoutePackage(
+            id: existing.id,
+            name: existing.name,
+            sourceFileName: existing.sourceFileName,
+            importedAt: existing.importedAt,
+            activityHint: existing.activityHint,
+            points: orderedPoints,
+            offlineMapManifest: nil,
+            fallbackBoundingBox: existing.boundingBox
+        )
+    }
+
+    private func buildRoutePackage(
+        id: UUID,
+        name: String,
+        sourceFileName: String,
+        importedAt: Date,
+        activityHint: ActivityKind,
+        points: [ParsedGPXPoint],
+        offlineMapManifest: OfflineMapManifest?,
+        fallbackBoundingBox: GeoBoundingBox? = nil
+    ) -> RoutePackage {
+        let fullRoute = buildRoutePoints(from: points)
         let simplified = simplify(route: fullRoute, toleranceMeters: activityHint.simplificationToleranceMeters)
         let navigationRoute = densify(
             route: simplified,
@@ -77,29 +99,31 @@ public struct RouteProcessor {
         let cues = RouteCueGenerator().generate(route: simplified)
         let (gain, loss) = elevationStats(for: fullRoute)
         let coordinates = fullRoute.map(\.coordinate)
-        let boundingBox = MapMath.boundingBox(for: coordinates) ?? existing.boundingBox
+        let boundingBox = MapMath.boundingBox(for: coordinates)
+            ?? fallbackBoundingBox
+            ?? GeoBoundingBox(minLatitude: 0, maxLatitude: 0, minLongitude: 0, maxLongitude: 0)
 
         let navigationWarning = RouteNavigationQuality.warning(
             distanceMeters: fullRoute.last?.distanceFromStartMeters ?? 0,
-            originalPointCount: validPoints.count,
+            originalPointCount: points.count,
             simplifiedPointCount: simplified.count
         )
 
         return RoutePackage(
-            id: existing.id,
-            name: existing.name,
-            sourceFileName: existing.sourceFileName,
-            importedAt: existing.importedAt,
+            id: id,
+            name: name,
+            sourceFileName: sourceFileName,
+            importedAt: importedAt,
             activityHint: activityHint,
             distanceMeters: fullRoute.last?.distanceFromStartMeters ?? 0,
             elevationGainMeters: gain,
             elevationLossMeters: loss,
             boundingBox: boundingBox,
-            originalPointCount: validPoints.count,
+            originalPointCount: points.count,
             simplifiedPointCount: simplified.count,
             route: navigationRoute,
             cues: cues,
-            offlineMapManifest: nil,
+            offlineMapManifest: offlineMapManifest,
             navigationWarning: navigationWarning
         )
     }

@@ -18,6 +18,7 @@ struct ImportRouteView: View {
     @State private var routeName = ""
     @State private var selectedActivity: ActivityKind = .running
     @State private var buildOfflinePack = false
+    @State private var reverseDirection = false
     @State private var isImporting = false
     @State private var errorMessage: String?
     @State private var navigationWarning: String?
@@ -69,6 +70,10 @@ struct ImportRouteView: View {
                 }
 
                 Section("Options") {
+                    Toggle("Reverse Direction", isOn: $reverseDirection)
+                        .onChange(of: reverseDirection) { _, _ in
+                            Task { await previewNavigationWarning() }
+                        }
                     Toggle("Build Offline Map Pack", isOn: $buildOfflinePack)
                 }
 
@@ -161,7 +166,8 @@ struct ImportRouteView: View {
                 from: parsed,
                 sourceFileName: url.lastPathComponent,
                 activityHint: selectedActivity,
-                customName: routeName.nilIfEmpty
+                customName: routeName.nilIfEmpty,
+                reverseDirection: reverseDirection
             )
             navigationWarning = package.navigationWarning
         } catch {
@@ -188,7 +194,8 @@ struct ImportRouteView: View {
                 fileName: url.lastPathComponent,
                 customName: routeName,
                 activityHint: selectedActivity,
-                buildOfflinePack: buildOfflinePack
+                buildOfflinePack: buildOfflinePack,
+                reverseDirection: reverseDirection
             )
             incomingGPX.clearPending()
             dismiss()

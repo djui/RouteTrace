@@ -1,6 +1,40 @@
 import Foundation
 
 public enum GPXExporter {
+    public static func exportTrack(name: String, points: [ParsedGPXPoint]) -> String {
+        var lines: [String] = [
+            #"<?xml version="1.0" encoding="UTF-8"?>"#,
+            #"<gpx version="1.1" creator="RouteTrace">"#,
+            "  <metadata>",
+            "    <name>\(escape(name))</name>",
+            "  </metadata>",
+            "  <trk>",
+            "    <name>\(escape(name))</name>",
+            "    <trkseg>"
+        ]
+
+        for point in points {
+            lines.append("      <trkpt lat=\"\(point.latitude)\" lon=\"\(point.longitude)\">")
+            if let elevation = point.elevationMeters {
+                lines.append("        <ele>\(elevation)</ele>")
+            }
+            lines.append("      </trkpt>")
+        }
+
+        lines += [
+            "    </trkseg>",
+            "  </trk>",
+            "</gpx>"
+        ]
+
+        return lines.joined(separator: "\n")
+    }
+
+    public static func writeTrack(name: String, points: [ParsedGPXPoint], to url: URL) throws {
+        let gpx = exportTrack(name: name, points: points)
+        try gpx.write(to: url, atomically: true, encoding: .utf8)
+    }
+
     public static func exportRoute(_ package: RoutePackage) -> String {
         var lines: [String] = [
             #"<?xml version="1.0" encoding="UTF-8"?>"#,
