@@ -18,6 +18,7 @@ struct ImportRouteView: View {
     @State private var routeName = ""
     @State private var selectedActivity: ActivityKind = .running
     @State private var buildOfflinePack = false
+    @State private var reverseDirection = false
     @State private var isImporting = false
     @State private var importProgress: OfflinePackBuildProgress?
     @State private var errorMessage: String?
@@ -70,6 +71,10 @@ struct ImportRouteView: View {
                 }
 
                 Section("Options") {
+                    Toggle("Reverse Direction", isOn: $reverseDirection)
+                        .onChange(of: reverseDirection) { _, _ in
+                            Task { await previewNavigationWarning() }
+                        }
                     Toggle("Build Offline Map Pack", isOn: $buildOfflinePack)
                 }
 
@@ -160,7 +165,8 @@ struct ImportRouteView: View {
                 from: parsed,
                 sourceFileName: url.lastPathComponent,
                 activityHint: selectedActivity,
-                customName: routeName.nilIfEmpty
+                customName: routeName.nilIfEmpty,
+                reverseDirection: reverseDirection
             )
             navigationWarning = package.navigationWarning
         } catch {
@@ -192,6 +198,7 @@ struct ImportRouteView: View {
                 customName: routeName,
                 activityHint: selectedActivity,
                 buildOfflinePack: buildOfflinePack,
+                reverseDirection: reverseDirection,
                 onOfflineBuildProgress: { progress in
                     importProgress = progress
                 }

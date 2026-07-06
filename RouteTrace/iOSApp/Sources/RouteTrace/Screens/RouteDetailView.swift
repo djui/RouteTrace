@@ -18,6 +18,7 @@ struct RouteDetailView: View {
     @State private var isDeletingOfflinePack = false
     @State private var isSendingToWatch = false
     @State private var isUpdatingActivityKind = false
+    @State private var isReversingDirection = false
     @State private var isExporting = false
     @State private var showDeleteConfirmation = false
     @State private var showSourceGPXUnavailable = false
@@ -246,8 +247,12 @@ struct RouteDetailView: View {
                 isExporting: isExporting,
                 isSendingToWatch: isSendingToWatch,
                 isUpdatingActivityKind: isUpdatingActivityKind,
+                isReversingDirection: isReversingDirection,
                 onActivityKindChange: { kind in
                     Task { await updateActivityKind(to: kind) }
+                },
+                onReverseDirection: {
+                    Task { await reverseRouteDirection() }
                 },
                 onSendToWatch: sendToWatchAction,
                 onRename: {
@@ -350,6 +355,23 @@ struct RouteDetailView: View {
         do {
             _ = try routeStore.deleteOfflinePack(for: route)
             routePackage = try routeStore.loadRoutePackage(for: route)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    @MainActor
+    private func reverseRouteDirection() async {
+        let hadOfflinePack = route.offlineStatus != .missing
+        isReversingDirection = true
+        defer { isReversingDirection = false }
+
+        do {
+            _ = try await routeStore.reverseRoute(for: route)
+            routePackage = try routeStore.loadRoutePackage(for: route)
+            if hadOfflinePack {
+                infoMessage = "Offline map cleared — rebuild when ready."
+            }
         } catch {
             errorMessage = error.localizedDescription
         }

@@ -213,6 +213,55 @@ final class RouteStore: ObservableObject {
         return refreshed
     }
 
+    func reverseRoute(for entity: RouteEntity) async throws -> RouteEntity {
+        let processor = RouteProcessor()
+        let existing = try loadRoutePackage(for: entity)
+        let sourceURL = RouteTracePaths.sourceGPXURL(for: entity.id)
+
+        let updated: RoutePackage
+        if FileManager.default.fileExists(atPath: sourceURL.path) {
+            let data = try Data(contentsOf: sourceURL)
+            let parsed = try GPXParser().parse(data: data)
+            updated = processor.reprocessPackage(
+                existing,
+                parsed: parsed,
+                activityHint: existing.activityHint,
+                reverseDirection: true
+            )
+
+            let validPoints = parsed.primaryTrackPoints.filter {
+                MapMath.isValidCoordinate(latitude: $0.latitude, longitude: $0.longitude)
+            }
+            try GPXExporter.writeTrack(
+                name: existing.name,
+                points: Array(validPoints.reversed()),
+                to: sourceURL
+            )
+        } else {
+            updated = processor.reversePackage(existing)
+        }
+
+        let tilesDirectory = entity.routeDirectoryURL.appendingPathComponent("tiles", isDirectory: true)
+        if FileManager.default.fileExists(atPath: tilesDirectory.path) {
+            try? FileManager.default.removeItem(at: tilesDirectory)
+        }
+
+        let saved = try saveRoutePackage(updated)
+
+        switch saved.transferState {
+        case .installed, .queued, .transferring:
+            saved.transferState = .notSent
+            try context.save()
+        case .notSent, .failed:
+            break
+        }
+
+        guard let refreshed = try fetchRoute(id: entity.id) else {
+            throw RouteStoreError.routeNotFound
+        }
+        return refreshed
+    }
+
     func buildOfflinePack(
         for entity: RouteEntity,
         onProgress: ((OfflinePackBuildProgress) -> Void)? = nil
