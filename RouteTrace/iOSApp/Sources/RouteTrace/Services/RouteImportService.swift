@@ -17,7 +17,8 @@ final class RouteImportService {
         fileName: String,
         customName: String?,
         activityHint: ActivityKind,
-        buildOfflinePack: Bool = false
+        buildOfflinePack: Bool = false,
+        onOfflineBuildProgress: ((OfflinePackBuildProgress) -> Void)? = nil
     ) async throws -> RouteEntity {
         let parsed = try parser.parse(data: data)
         let package = processor.makeRoutePackage(
@@ -32,7 +33,10 @@ final class RouteImportService {
         try data.write(to: sourceURL, options: .atomic)
 
         if buildOfflinePack {
-            return try await routeStore.buildOfflinePack(for: entity)
+            return try await routeStore.buildOfflinePack(
+                for: entity,
+                onProgress: onOfflineBuildProgress
+            )
         }
 
         return entity
