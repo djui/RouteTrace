@@ -17,9 +17,7 @@ public struct RouteProcessor {
         let orderedPoints = reverseDirection ? Array(validPoints.reversed()) : validPoints
 
         let name = customName
-            ?? parsed.tracks.first?.name
-            ?? parsed.routes.first?.name
-            ?? parsed.metadataName
+            ?? parsed.importName
             ?? sourceFileName.replacingOccurrences(of: ".gpx", with: "")
 
         return buildRoutePackage(

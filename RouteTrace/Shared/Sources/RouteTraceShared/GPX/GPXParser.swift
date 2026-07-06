@@ -32,14 +32,47 @@ public struct ParsedGPX: Sendable {
     public let invalidPointCount: Int
 
     public var primaryTrackPoints: [ParsedGPXPoint] {
-        if let longest = tracks.flatMap(\.segments).max(by: { $0.count < $1.count }), !longest.isEmpty {
-            return longest
+        let trackPoints = tracks.flatMap(\.segments).flatMap { $0 }
+        if !trackPoints.isEmpty {
+            return trackPoints
         }
-        return routes.max(by: { $0.points.count < $1.points.count })?.points ?? []
+        return routes.flatMap(\.points)
     }
 
     public var usablePointCount: Int {
         primaryTrackPoints.count
+    }
+
+    public var importName: String? {
+        if let metadata = Self.meaningfulName(metadataName) {
+            return metadata
+        }
+        let trackNames = tracks.compactMap { Self.meaningfulName($0.name) }
+        if !trackNames.isEmpty {
+            return trackNames.joined(separator: ", ")
+        }
+        let routeNames = routes.compactMap { Self.meaningfulName($0.name) }
+        if !routeNames.isEmpty {
+            return routeNames.joined(separator: ", ")
+        }
+        return nil
+    }
+
+    private static let genericMetadataNames: Set<String> = [
+        "activity",
+        "untitled",
+        "route",
+        "track",
+    ]
+
+    private static func meaningfulName(_ name: String?) -> String? {
+        guard let trimmed = name?.trimmingCharacters(in: .whitespacesAndNewlines), !trimmed.isEmpty else {
+            return nil
+        }
+        guard !genericMetadataNames.contains(trimmed.lowercased()) else {
+            return nil
+        }
+        return trimmed
     }
 }
 

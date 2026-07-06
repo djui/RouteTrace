@@ -22,6 +22,76 @@ final class RouteTraceSharedTests: XCTestCase {
         XCTAssertEqual(parsed.metadataName, "Test Loop")
     }
 
+    func testMultiTrackRouteConcatenatesAllSegments() throws {
+        let url = RouteTraceTestSupport.fixturesBundle.url(forResource: "multi_track_route", withExtension: "gpx")
+            ?? RouteTraceTestSupport.fixturesBundle.url(forResource: "multi_track_route", withExtension: "gpx", subdirectory: "Fixtures")
+        let resolvedURL = try XCTUnwrap(url)
+        let parsed = try GPXParser().parse(data: try Data(contentsOf: resolvedURL))
+
+        XCTAssertEqual(parsed.usablePointCount, 9)
+        XCTAssertEqual(parsed.tracks.count, 3)
+        XCTAssertEqual(parsed.importName, "Alpha / Beta, Beta / Gamma, Gamma / Delta")
+
+        let package = RouteProcessor().makeRoutePackage(
+            from: parsed,
+            sourceFileName: "multi_track_route.gpx",
+            activityHint: .roadCycling
+        )
+
+        XCTAssertEqual(package.originalPointCount, 9)
+        XCTAssertGreaterThan(package.distanceMeters, 500)
+
+        let longestSegmentOnly = try XCTUnwrap(
+            parsed.tracks.flatMap(\.segments).max(by: { $0.count < $1.count })
+        )
+        let longestOnlyDistance = segmentDistanceMeters(longestSegmentOnly)
+        XCTAssertGreaterThan(package.distanceMeters, longestOnlyDistance)
+    }
+
+    func testImportNamePrefersMeaningfulMetadata() throws {
+        let url = RouteTraceTestSupport.fixturesBundle.url(forResource: "multi_track_metadata", withExtension: "gpx")
+            ?? RouteTraceTestSupport.fixturesBundle.url(forResource: "multi_track_metadata", withExtension: "gpx", subdirectory: "Fixtures")
+        let resolvedURL = try XCTUnwrap(url)
+        let parsed = try GPXParser().parse(data: try Data(contentsOf: resolvedURL))
+
+        XCTAssertEqual(parsed.importName, "Coastal Tour")
+
+        let package = RouteProcessor().makeRoutePackage(
+            from: parsed,
+            sourceFileName: "multi_track_metadata.gpx",
+            activityHint: .running
+        )
+        XCTAssertEqual(package.name, "Coastal Tour")
+    }
+
+    func testImportNameFallsBackToFilenameWhenNoUsefulNames() throws {
+        let url = RouteTraceTestSupport.fixturesBundle.url(forResource: "no_names_track", withExtension: "gpx")
+            ?? RouteTraceTestSupport.fixturesBundle.url(forResource: "no_names_track", withExtension: "gpx", subdirectory: "Fixtures")
+        let resolvedURL = try XCTUnwrap(url)
+        let parsed = try GPXParser().parse(data: try Data(contentsOf: resolvedURL))
+
+        XCTAssertNil(parsed.importName)
+
+        let package = RouteProcessor().makeRoutePackage(
+            from: parsed,
+            sourceFileName: "my_unnamed_route.gpx",
+            activityHint: .running
+        )
+        XCTAssertEqual(package.name, "my_unnamed_route")
+    }
+
+    private func segmentDistanceMeters(_ points: [ParsedGPXPoint]) -> Double {
+        guard points.count >= 2 else { return 0 }
+        var total = 0.0
+        for index in 1..<points.count {
+            total += MapMath.haversineMeters(
+                from: GeoCoordinate(latitude: points[index - 1].latitude, longitude: points[index - 1].longitude),
+                to: GeoCoordinate(latitude: points[index].latitude, longitude: points[index].longitude)
+            )
+        }
+        return total
+    }
+
     func testRouteProcessorComputesDistance() throws {
         let url = RouteTraceTestSupport.fixturesBundle.url(forResource: "simple_track", withExtension: "gpx")
             ?? RouteTraceTestSupport.fixturesBundle.url(forResource: "simple_track", withExtension: "gpx", subdirectory: "Fixtures")

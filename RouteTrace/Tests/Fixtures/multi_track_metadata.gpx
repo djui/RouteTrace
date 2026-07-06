@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="RouteTrace Test">
+  <metadata>
+    <name>Coastal Tour</name>
+  </metadata>
+  <trk>
+    <name>Stage One</name>
+    <trkseg>
+      <trkpt lat="48.8566" lon="2.3522"><ele>35</ele></trkpt>
+      <trkpt lat="48.8570" lon="2.3530"><ele>36</ele></trkpt>
+    </trkseg>
+  </trk>
+  <trk>
+    <name>Stage Two</name>
+    <trkseg>
+      <trkpt lat="48.8570" lon="2.3530"><ele>36</ele></trkpt>
+      <trkpt lat="48.8575" lon="2.3540"><ele>38</ele></trkpt>
+    </trkseg>
+  </trk>
+</gpx>
