@@ -24,6 +24,12 @@ Package.resolved
 *.env
 .env.*
 credentials.json
+*.mobileprovision
+
+# Fastlane
+fastlane/report.xml
+fastlane/test_output/
+fastlane/README.md
 
 # Cursor / IDE
 .cursor/

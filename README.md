@@ -81,3 +81,51 @@ You can also run shared-module tests via Swift Package Manager:
 ```bash
 swift test
 ```
+
+## TestFlight
+
+Release builds archive the **RouteTrace** scheme (iOS app with embedded Watch app and widget extension) and upload to TestFlight via [Fastlane](https://fastlane.tools).
+
+### Prerequisites (one-time)
+
+1. Create an app record in [App Store Connect](https://appstoreconnect.apple.com) for bundle ID `com.uwe.RouteTrace`.
+2. In the [Apple Developer portal](https://developer.apple.com/account), enable these capabilities on the App IDs:
+   - HealthKit
+   - iCloud (CloudKit)
+   - App Groups (`group.com.uwe.RouteTrace`)
+3. Create an [App Store Connect API key](https://appstoreconnect.apple.com/access/integrations/api) with **Admin** or **App Manager** role.
+4. Add these GitHub repository secrets (Settings → Secrets and variables → Actions):
+
+| Secret | Value |
+|--------|-------|
+| `APP_STORE_CONNECT_API_KEY_ID` | Key ID from App Store Connect |
+| `APP_STORE_CONNECT_ISSUER_ID` | Issuer ID from App Store Connect |
+| `APP_STORE_CONNECT_API_KEY` | Base64-encoded `.p8` key file (`base64 -i AuthKey_XXXX.p8 \| pbcopy`) |
+
+The first TestFlight upload may prompt for export compliance and privacy answers in App Store Connect. HealthKit and background location usage may require additional review context.
+
+### CI (GitHub Actions)
+
+The [TestFlight workflow](.github/workflows/testflight.yml) runs on:
+
+- **Manual trigger** — Actions → TestFlight → Run workflow (optional build number override)
+- **Version tags** — pushing a tag like `v0.1.0` triggers an upload
+
+### Local build and upload
+
+Requires Xcode 26 on macOS:
+
+```bash
+bundle install
+
+# Export an App Store IPA without uploading
+bundle exec fastlane build
+
+# Build and upload to TestFlight (requires API key env vars)
+export APP_STORE_CONNECT_API_KEY_ID="..."
+export APP_STORE_CONNECT_ISSUER_ID="..."
+export APP_STORE_CONNECT_API_KEY="$(base64 -i AuthKey_XXXX.p8)"
+bundle exec fastlane beta
+```
+
+Optional: set `BUILD_NUMBER` to override the auto-incremented build number.
