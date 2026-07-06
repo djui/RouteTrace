@@ -17,19 +17,32 @@ final class RouteImportService {
         fileName: String,
         customName: String?,
         activityHint: ActivityKind,
-        buildOfflinePack: Bool = false
+        buildOfflinePack: Bool = false,
+        reverseDirection: Bool = false
     ) async throws -> RouteEntity {
         let parsed = try parser.parse(data: data)
         let package = processor.makeRoutePackage(
             from: parsed,
             sourceFileName: fileName,
             activityHint: activityHint,
-            customName: customName?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+            customName: customName?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty,
+            reverseDirection: reverseDirection
         )
 
         let entity = try routeStore.saveRoutePackage(package)
         let sourceURL = RouteTracePaths.sourceGPXURL(for: package.id)
-        try data.write(to: sourceURL, options: .atomic)
+        if reverseDirection {
+            let validPoints = parsed.primaryTrackPoints.filter {
+                MapMath.isValidCoordinate(latitude: $0.latitude, longitude: $0.longitude)
+            }
+            try GPXExporter.writeTrack(
+                name: package.name,
+                points: Array(validPoints.reversed()),
+                to: sourceURL
+            )
+        } else {
+            try data.write(to: sourceURL, options: .atomic)
+        }
 
         if buildOfflinePack {
             return try await routeStore.buildOfflinePack(for: entity)

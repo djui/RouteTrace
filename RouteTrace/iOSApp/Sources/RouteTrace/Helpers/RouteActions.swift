@@ -47,11 +47,17 @@ struct RouteActionMenuItems: View {
     var isExporting: Bool = false
     var isSendingToWatch: Bool = false
     var isUpdatingActivityKind: Bool = false
+    var isReversingDirection: Bool = false
     var onActivityKindChange: ((ActivityKind) -> Void)?
+    var onReverseDirection: (() -> Void)?
     var onSendToWatch: (() -> Void)?
     var onRename: (() -> Void)?
     var onShare: () -> Void
     var onDelete: () -> Void
+
+    private var isMutatingRoute: Bool {
+        isUpdatingActivityKind || isReversingDirection
+    }
 
     var body: some View {
         if let onActivityKindChange {
@@ -62,7 +68,7 @@ struct RouteActionMenuItems: View {
                     } label: {
                         Label(kind.displayName, systemImage: kind.systemImage)
                     }
-                    .disabled(kind == route.activityHint || isUpdatingActivityKind)
+                    .disabled(kind == route.activityHint || isMutatingRoute)
                 }
             } label: {
                 Label(
@@ -70,6 +76,15 @@ struct RouteActionMenuItems: View {
                     systemImage: route.activityHint.systemImage
                 )
             }
+        }
+
+        if let onReverseDirection {
+            Button {
+                onReverseDirection()
+            } label: {
+                Label("Reverse Direction", systemImage: "arrow.left.arrow.right")
+            }
+            .disabled(isMutatingRoute || routePackage == nil)
         }
 
         #if canImport(WatchConnectivity)

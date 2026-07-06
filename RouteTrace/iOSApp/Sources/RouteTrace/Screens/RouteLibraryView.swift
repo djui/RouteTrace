@@ -21,6 +21,7 @@ struct RouteLibraryView: View {
     @State private var isExporting = false
     @State private var sendingRouteID: UUID?
     @State private var updatingActivityKindRouteID: UUID?
+    @State private var reversingDirectionRouteID: UUID?
     @State private var showSourceGPXUnavailable = false
     @State private var routePendingRename: RouteEntity?
     @State private var editedRouteName = ""
@@ -43,8 +44,12 @@ struct RouteLibraryView: View {
                             isExporting: isExporting,
                             isSendingToWatch: sendingRouteID == route.id,
                             isUpdatingActivityKind: updatingActivityKindRouteID == route.id,
+                            isReversingDirection: reversingDirectionRouteID == route.id,
                             onActivityKindChange: { kind in
                                 Task { await updateActivityKind(for: route, to: kind) }
+                            },
+                            onReverseDirection: {
+                                Task { await reverseRouteDirection(for: route) }
                             },
                             onSendToWatch: sendToWatchAction(for: route),
                             onRename: {
@@ -162,6 +167,18 @@ struct RouteLibraryView: View {
     #endif
 
     @MainActor
+    private func reverseRouteDirection(for route: RouteEntity) async {
+        reversingDirectionRouteID = route.id
+        defer { reversingDirectionRouteID = nil }
+
+        do {
+            _ = try await routeStore.reverseRoute(for: route)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    @MainActor
     private func updateActivityKind(for route: RouteEntity, to kind: ActivityKind) async {
         guard RouteTracePaths.hasSourceGPX(for: route.id) else {
             showSourceGPXUnavailable = true
@@ -235,7 +252,9 @@ private struct RouteListRow: View {
     let isExporting: Bool
     let isSendingToWatch: Bool
     let isUpdatingActivityKind: Bool
+    let isReversingDirection: Bool
     let onActivityKindChange: (ActivityKind) -> Void
+    let onReverseDirection: () -> Void
     let onSendToWatch: (() -> Void)?
     let onRename: () -> Void
     let onShare: () -> Void
@@ -254,7 +273,9 @@ private struct RouteListRow: View {
                 isExporting: isExporting,
                 isSendingToWatch: isSendingToWatch,
                 isUpdatingActivityKind: isUpdatingActivityKind,
+                isReversingDirection: isReversingDirection,
                 onActivityKindChange: onActivityKindChange,
+                onReverseDirection: onReverseDirection,
                 onSendToWatch: onSendToWatch,
                 onRename: onRename,
                 onShare: onShare,

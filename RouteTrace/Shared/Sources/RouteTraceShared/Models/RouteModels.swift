@@ -256,7 +256,18 @@ public struct RoutePackage: Codable, Sendable, Identifiable {
             && offlineStatus == other.offlineStatus
             && hasElevationData == other.hasElevationData
             && elevationGainMeters == other.elevationGainMeters
+            && routeEndpointsMatch(other)
     }
+
+    private func routeEndpointsMatch(_ other: RoutePackage) -> Bool {
+        guard let first, let last, let otherFirst = other.route.first, let otherLast = other.route.last else {
+            return route.isEmpty && other.route.isEmpty
+        }
+        return first.coordinate == otherFirst.coordinate && last.coordinate == otherLast.coordinate
+    }
+
+    private var first: RoutePoint? { route.first }
+    private var last: RoutePoint? { route.last }
 
     public var offlineStatus: OfflinePackStatus {
         guard let manifest = offlineMapManifest else { return .missing }

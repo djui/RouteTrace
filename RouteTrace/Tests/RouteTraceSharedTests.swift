@@ -64,6 +64,139 @@ final class RouteTraceSharedTests: XCTestCase {
         XCTAssertFalse(existing.hasSameWatchMaterializedContent(as: incoming))
     }
 
+    func testWatchMaterializedContentDiffersWhenEndpointsChange() {
+        let base = sampleRoutePackage(hasElevation: true, elevationGainMeters: 180)
+        var reversedRoute = base.route
+        reversedRoute.reverse()
+        let reversed = RoutePackage(
+            id: base.id,
+            name: base.name,
+            sourceFileName: base.sourceFileName,
+            importedAt: base.importedAt,
+            activityHint: base.activityHint,
+            distanceMeters: base.distanceMeters,
+            elevationGainMeters: base.elevationGainMeters,
+            elevationLossMeters: base.elevationLossMeters,
+            boundingBox: base.boundingBox,
+            originalPointCount: base.originalPointCount,
+            simplifiedPointCount: base.simplifiedPointCount,
+            route: reversedRoute,
+            cues: base.cues,
+            offlineMapManifest: base.offlineMapManifest
+        )
+        XCTAssertFalse(base.hasSameWatchMaterializedContent(as: reversed))
+    }
+
+    func testReverseDirectionSwapsEndpoints() throws {
+        let url = RouteTraceTestSupport.fixturesBundle.url(forResource: "simple_track", withExtension: "gpx")
+            ?? RouteTraceTestSupport.fixturesBundle.url(forResource: "simple_track", withExtension: "gpx", subdirectory: "Fixtures")
+        let resolvedURL = try XCTUnwrap(url)
+        let parsed = try GPXParser().parse(data: try Data(contentsOf: resolvedURL))
+        let processor = RouteProcessor()
+
+        let forward = processor.makeRoutePackage(
+            from: parsed,
+            sourceFileName: "simple_track.gpx",
+            activityHint: .running
+        )
+        let reversed = processor.makeRoutePackage(
+            from: parsed,
+            sourceFileName: "simple_track.gpx",
+            activityHint: .running,
+            reverseDirection: true
+        )
+
+        XCTAssertEqual(forward.route.first?.coordinate, reversed.route.last?.coordinate)
+        XCTAssertEqual(forward.route.last?.coordinate, reversed.route.first?.coordinate)
+        XCTAssertEqual(forward.distanceMeters, reversed.distanceMeters, accuracy: 0.01)
+    }
+
+    func testReverseDirectionSwapsElevationGainAndLoss() throws {
+        let url = RouteTraceTestSupport.fixturesBundle.url(forResource: "simple_track", withExtension: "gpx")
+            ?? RouteTraceTestSupport.fixturesBundle.url(forResource: "simple_track", withExtension: "gpx", subdirectory: "Fixtures")
+        let resolvedURL = try XCTUnwrap(url)
+        let parsed = try GPXParser().parse(data: try Data(contentsOf: resolvedURL))
+        let processor = RouteProcessor()
+
+        let forward = processor.makeRoutePackage(
+            from: parsed,
+            sourceFileName: "simple_track.gpx",
+            activityHint: .running
+        )
+        let reversed = processor.makeRoutePackage(
+            from: parsed,
+            sourceFileName: "simple_track.gpx",
+            activityHint: .running,
+            reverseDirection: true
+        )
+
+        XCTAssertGreaterThan(forward.elevationGainMeters ?? 0, 0)
+        XCTAssertEqual(forward.elevationGainMeters ?? 0, reversed.elevationLossMeters ?? 0, accuracy: 0.01)
+        XCTAssertEqual(forward.elevationLossMeters ?? 0, reversed.elevationGainMeters ?? 0, accuracy: 0.01)
+    }
+
+    func testReverseDirectionRegeneratesCues() throws {
+        let url = RouteTraceTestSupport.fixturesBundle.url(forResource: "simple_track", withExtension: "gpx")
+            ?? RouteTraceTestSupport.fixturesBundle.url(forResource: "simple_track", withExtension: "gpx", subdirectory: "Fixtures")
+        let resolvedURL = try XCTUnwrap(url)
+        let parsed = try GPXParser().parse(data: try Data(contentsOf: resolvedURL))
+        let processor = RouteProcessor()
+
+        let forward = processor.makeRoutePackage(
+            from: parsed,
+            sourceFileName: "simple_track.gpx",
+            activityHint: .running
+        )
+        let reversed = processor.makeRoutePackage(
+            from: parsed,
+            sourceFileName: "simple_track.gpx",
+            activityHint: .running,
+            reverseDirection: true
+        )
+
+        XCTAssertFalse(forward.cues.isEmpty)
+        XCTAssertFalse(reversed.cues.isEmpty)
+        XCTAssertNotEqual(forward.cues.first?.coordinate, reversed.cues.first?.coordinate)
+        XCTAssertNotEqual(forward.cues.last?.coordinate, reversed.cues.last?.coordinate)
+    }
+
+    func testReversePackageFromStoredGeometry() throws {
+        let url = RouteTraceTestSupport.fixturesBundle.url(forResource: "simple_track", withExtension: "gpx")
+            ?? RouteTraceTestSupport.fixturesBundle.url(forResource: "simple_track", withExtension: "gpx", subdirectory: "Fixtures")
+        let resolvedURL = try XCTUnwrap(url)
+        let parsed = try GPXParser().parse(data: try Data(contentsOf: resolvedURL))
+        let processor = RouteProcessor()
+        let forward = processor.makeRoutePackage(
+            from: parsed,
+            sourceFileName: "simple_track.gpx",
+            activityHint: .running
+        )
+
+        let reversed = processor.reversePackage(forward)
+
+        XCTAssertEqual(forward.route.first?.coordinate, reversed.route.last?.coordinate)
+        XCTAssertEqual(forward.route.last?.coordinate, reversed.route.first?.coordinate)
+        XCTAssertEqual(forward.id, reversed.id)
+        XCTAssertEqual(forward.name, reversed.name)
+    }
+
+    func testExportTrackWritesReversedGPX() throws {
+        let points = [
+            ParsedGPXPoint(latitude: 48.8566, longitude: 2.3522, elevationMeters: 35, timestamp: nil),
+            ParsedGPXPoint(latitude: 48.8585, longitude: 2.3570, elevationMeters: 42, timestamp: nil)
+        ]
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("gpx")
+
+        try GPXExporter.writeTrack(name: "Reversed", points: Array(points.reversed()), to: tempURL)
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        let parsed = try GPXParser().parse(data: try Data(contentsOf: tempURL))
+        XCTAssertEqual(parsed.primaryTrackPoints.first?.latitude, 48.8585, accuracy: 0.0001)
+        XCTAssertEqual(parsed.primaryTrackPoints.last?.latitude, 48.8566, accuracy: 0.0001)
+    }
+
     func testCueGeneratorDetectsTurn() {
         let route = [
             RoutePoint(id: 0, latitude: 48.8566, longitude: 2.3522, elevationMeters: nil, distanceFromStartMeters: 0, bearingDegrees: 0),
