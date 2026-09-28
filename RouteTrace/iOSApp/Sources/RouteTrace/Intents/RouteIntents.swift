@@ -75,9 +75,8 @@ struct StartRouteOnWatchIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        guard let services = await AppServices.shared.ready() else {
-            throw StartOnWatchError.appNotReady
-        }
+        let services = AppServices.shared
+        await services.startAndWaitForWatchSession()
         let outcome = try await WatchRouteLauncher.start(
             routeID: route.id,
             routeStore: services.routeStore,
@@ -103,6 +102,15 @@ struct RouteTraceShortcuts: AppShortcutsProvider {
             ],
             shortTitle: "Start on Apple Watch",
             systemImageName: "applewatch"
+        )
+        AppShortcut(
+            intent: DownloadOfflineMapIntent(),
+            phrases: [
+                "Download offline map for \(\.$route) in \(.applicationName)",
+                "Get the offline map for \(\.$route) with \(.applicationName)"
+            ],
+            shortTitle: "Download Offline Map",
+            systemImageName: "arrow.down.circle"
         )
     }
 }

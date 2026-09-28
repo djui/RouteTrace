@@ -13,6 +13,7 @@
 		393a0b9f40d981c2332cb257 /* RouteTrace/iOSApp/Sources/RouteTrace/Components/ZoneTimeChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3854b31d6c68c407f9b628e6 /* RouteTrace/iOSApp/Sources/RouteTrace/Components/ZoneTimeChart.swift */; };
 		3575adf5b5dd94ebcf896de3 /* RouteTrace/iOSApp/Sources/RouteTrace/Helpers/DemoData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33ef47184ff2d9e741e7bb9e /* RouteTrace/iOSApp/Sources/RouteTrace/Helpers/DemoData.swift */; };
 		3726111d09e3b453b14d92ad /* RouteTrace/iOSApp/Sources/RouteTrace/Helpers/RouteActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 387fe212b3dfc46ce8f99726 /* RouteTrace/iOSApp/Sources/RouteTrace/Helpers/RouteActions.swift */; };
+		349557806c5891b90d6c2cb6 /* RouteTrace/iOSApp/Sources/RouteTrace/Intents/OfflineMapIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33e903b8dbd690c95861c06a /* RouteTrace/iOSApp/Sources/RouteTrace/Intents/OfflineMapIntent.swift */; };
 		3dc05e2d7dc69d643642e565 /* RouteTrace/iOSApp/Sources/RouteTrace/Intents/RouteIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3c67750e4913e6b0576d56e8 /* RouteTrace/iOSApp/Sources/RouteTrace/Intents/RouteIntents.swift */; };
 		322afb8d38a48676dda8750e /* RouteTrace/iOSApp/Sources/RouteTrace/RouteTraceApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3ab40dc3b7c17e131eb4e81c /* RouteTrace/iOSApp/Sources/RouteTrace/RouteTraceApp.swift */; };
 		3ad95fffd92e5c8f51cb9965 /* RouteTrace/iOSApp/Sources/RouteTrace/Screens/ActivityListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3970437b491c92af8c34d368 /* RouteTrace/iOSApp/Sources/RouteTrace/Screens/ActivityListView.swift */; };
@@ -176,6 +177,7 @@
 		3854b31d6c68c407f9b628e6 /* RouteTrace/iOSApp/Sources/RouteTrace/Components/ZoneTimeChart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteTrace/iOSApp/Sources/RouteTrace/Components/ZoneTimeChart.swift; sourceTree = "<group>"; };
 		33ef47184ff2d9e741e7bb9e /* RouteTrace/iOSApp/Sources/RouteTrace/Helpers/DemoData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteTrace/iOSApp/Sources/RouteTrace/Helpers/DemoData.swift; sourceTree = "<group>"; };
 		387fe212b3dfc46ce8f99726 /* RouteTrace/iOSApp/Sources/RouteTrace/Helpers/RouteActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteTrace/iOSApp/Sources/RouteTrace/Helpers/RouteActions.swift; sourceTree = "<group>"; };
+		33e903b8dbd690c95861c06a /* RouteTrace/iOSApp/Sources/RouteTrace/Intents/OfflineMapIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteTrace/iOSApp/Sources/RouteTrace/Intents/OfflineMapIntent.swift; sourceTree = "<group>"; };
 		3c67750e4913e6b0576d56e8 /* RouteTrace/iOSApp/Sources/RouteTrace/Intents/RouteIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteTrace/iOSApp/Sources/RouteTrace/Intents/RouteIntents.swift; sourceTree = "<group>"; };
 		3ab40dc3b7c17e131eb4e81c /* RouteTrace/iOSApp/Sources/RouteTrace/RouteTraceApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteTrace/iOSApp/Sources/RouteTrace/RouteTraceApp.swift; sourceTree = "<group>"; };
 		3970437b491c92af8c34d368 /* RouteTrace/iOSApp/Sources/RouteTrace/Screens/ActivityListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteTrace/iOSApp/Sources/RouteTrace/Screens/ActivityListView.swift; sourceTree = "<group>"; };
@@ -248,6 +250,7 @@
 				3854b31d6c68c407f9b628e6 /* RouteTrace/iOSApp/Sources/RouteTrace/Components/ZoneTimeChart.swift */,
 				33ef47184ff2d9e741e7bb9e /* RouteTrace/iOSApp/Sources/RouteTrace/Helpers/DemoData.swift */,
 				387fe212b3dfc46ce8f99726 /* RouteTrace/iOSApp/Sources/RouteTrace/Helpers/RouteActions.swift */,
+				33e903b8dbd690c95861c06a /* RouteTrace/iOSApp/Sources/RouteTrace/Intents/OfflineMapIntent.swift */,
 				3c67750e4913e6b0576d56e8 /* RouteTrace/iOSApp/Sources/RouteTrace/Intents/RouteIntents.swift */,
 				3ab40dc3b7c17e131eb4e81c /* RouteTrace/iOSApp/Sources/RouteTrace/RouteTraceApp.swift */,
 				3970437b491c92af8c34d368 /* RouteTrace/iOSApp/Sources/RouteTrace/Screens/ActivityListView.swift */,
@@ -537,6 +540,7 @@
 				393a0b9f40d981c2332cb257 /* RouteTrace/iOSApp/Sources/RouteTrace/Components/ZoneTimeChart.swift in Sources */,
 				3575adf5b5dd94ebcf896de3 /* RouteTrace/iOSApp/Sources/RouteTrace/Helpers/DemoData.swift in Sources */,
 				3726111d09e3b453b14d92ad /* RouteTrace/iOSApp/Sources/RouteTrace/Helpers/RouteActions.swift in Sources */,
+				349557806c5891b90d6c2cb6 /* RouteTrace/iOSApp/Sources/RouteTrace/Intents/OfflineMapIntent.swift in Sources */,
 				3dc05e2d7dc69d643642e565 /* RouteTrace/iOSApp/Sources/RouteTrace/Intents/RouteIntents.swift in Sources */,
 				322afb8d38a48676dda8750e /* RouteTrace/iOSApp/Sources/RouteTrace/RouteTraceApp.swift in Sources */,
 				3ad95fffd92e5c8f51cb9965 /* RouteTrace/iOSApp/Sources/RouteTrace/Screens/ActivityListView.swift in Sources */,

@@ -42,7 +42,6 @@ struct RouteTraceRootView: View {
     @State private var routeStore: RouteStore?
     #if canImport(WatchConnectivity)
     @State private var connectivityManager: PhoneConnectivityManager?
-    @State private var watchAutoTransfer: RouteWatchAutoTransfer?
     #endif
     @State private var selectedTab: AppTab = .routes
 
@@ -77,25 +76,20 @@ struct RouteTraceRootView: View {
 
     private func start() async {
         guard routeStore == nil else { return }
+        #if canImport(WatchConnectivity)
+        // Shared with intents, which may have set them up already in the background.
+        let services = AppServices.shared
+        services.start()
+        let store = services.routeStore
+        connectivityManager = services.connectivity
+        #else
         let store = RouteStore(context: modelContext)
         _ = try? store.loadSettings()
+        #endif
         routeStore = store
 
         #if DEBUG
         DemoData.seedIfRequested(into: store)
-        #endif
-
-        #if canImport(WatchConnectivity)
-        let manager = PhoneConnectivityManager(context: modelContext, routeStore: store)
-        let autoTransfer = RouteWatchAutoTransfer(routeStore: store, connectivityManager: manager)
-        autoTransfer.registerWithRouteStore()
-        manager.onSessionActivated = { [weak autoTransfer] in
-            autoTransfer?.transferPendingRoutes()
-        }
-        connectivityManager = manager
-        watchAutoTransfer = autoTransfer
-        manager.activate()
-        AppServices.shared.register(routeStore: store, connectivity: manager)
         #endif
 
         try? await store.restoreCloudBackedFilesIfNeeded()
