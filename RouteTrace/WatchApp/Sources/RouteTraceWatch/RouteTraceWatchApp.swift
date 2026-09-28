@@ -1,10 +1,14 @@
+import HealthKit
 import RouteTraceShared
 import SwiftData
 import SwiftUI
 import WatchConnectivity
+import WatchKit
 
 @main
 struct RouteTraceWatchApp: App {
+    @WKApplicationDelegateAdaptor private var appDelegate: RouteTraceWatchAppDelegate
+
     private let modelContainer = RouteTraceModelContainerFactory.make()
 
     @State private var routeStore = WatchRouteStore.shared
@@ -36,4 +40,10 @@ struct RouteTraceWatchApp: App {
         }
         .modelContainer(modelContainer)
     }
+}
+
+final class RouteTraceWatchAppDelegate: NSObject, WKApplicationDelegate {
+    /// The iPhone opened the app to start a route (Siri or Shortcuts there). Which route arrives
+    /// as a start request over WatchConnectivity, and the workout starts along with the route.
+    func handle(_ workoutConfiguration: HKWorkoutConfiguration) {}
 }
