@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Generate the Icon Composer app icons for the iOS and watchOS apps.
 
-The icon is the Live Map reduced to its essentials: the recorded track (green)
-leads into the position marker, and the route ahead continues as a dashed blue
-line. The marker mirrors the Watch's UserHeadingMarker: white ring, blue dot,
-heading wedge. Both AppIcon.icon bundles are written from the same geometry so
-the iPhone and Watch icons stay in sync; the system adds the Liquid Glass
+The icon is a loop route, halfway round: the recorded track (green) runs up the
+left side into the position marker at the top, and the route ahead (blue)
+continues down the right side, as on the Live Map. The marker matches the
+Watch's UserHeadingMarker: white ring, blue dot and white heading wedge, in the
+same proportions. Both AppIcon.icon bundles are written from the same geometry
+so the iPhone and Watch icons stay in sync; the system adds the Liquid Glass
 treatment and derives the Clear and Tinted appearances from the layers.
 
 Preview a rendition with Icon Composer's command line tool, e.g.:
@@ -27,104 +28,66 @@ IOS_ICON = ROOT / "RouteTrace/iOSApp/AppIcon.icon"
 WATCH_ICON = ROOT / "RouteTrace/WatchApp/AppIcon.icon"
 
 CANVAS = 1024
-MARKER = (512.0, 512.0)
-# Cubic Béziers meeting at the marker in the icon centre.
-TRACK = [(250.0, 1130.0), (300.0, 900.0), (400.0, 640.0), MARKER]
-ROUTE = [MARKER, (610.0, 400.0), (770.0, 280.0), (1100.0, 120.0)]
-
-TRACK_WIDTH = 136
-ROUTE_WIDTH = 80
-DASH_LENGTH = 124  # visible length, round caps included
-DASH_GAP = 48
-RING_RADIUS = 112
-RING_WIDTH = 32
-DOT_RADIUS = 62
-WEDGE_LENGTH = 80
-WEDGE_WIDTH = 96
-WEDGE_CORNER = 10
-
-Point = tuple[float, float]
-Curve = list[Point]
+# The loop is travelled clockwise from the bottom; the marker sits at the top.
+LOOP_CENTER = (512.0, 548.0)
+LOOP_RADIUS = 300.0
+LINE_WIDTH = 100
+MARKER_SIZE = 250  # ring diameter, like UserHeadingMarker's `size`
+ROUTE_GAP = 34  # space between the wedge tip and the route ahead
 
 
 class Palette:
-    def __init__(self, route: str, track: str, wedge: str, fill_top: str, fill_bottom: str) -> None:
+    def __init__(self, route: str, track: str, fill_top: str, fill_bottom: str) -> None:
         self.route = route
         self.track = track
-        self.wedge = wedge
         self.fill_top = fill_top
         self.fill_bottom = fill_bottom
 
 
 # System blue and green, as used for the route and track in the app.
-LIGHT = Palette(route="#007AFF", track="#34C759", wedge="#007AFF", fill_top="#FBFCFE", fill_bottom="#DFE6EF")
-DARK = Palette(route="#0A84FF", track="#30D158", wedge="#FFFFFF", fill_top="#1E2838", fill_bottom="#07090E")
+LIGHT = Palette(route="#007AFF", track="#34C759", fill_top="#F4F7FA", fill_bottom="#D6DEE8")
+DARK = Palette(route="#0A84FF", track="#30D158", fill_top="#1E2838", fill_bottom="#07090E")
 
 
 # MARK: - Geometry
 
 
-def point_at(curve: Curve, t: float) -> Point:
-    mt = 1 - t
-    return (
-        mt**3 * curve[0][0] + 3 * mt**2 * t * curve[1][0] + 3 * mt * t**2 * curve[2][0] + t**3 * curve[3][0],
-        mt**3 * curve[0][1] + 3 * mt**2 * t * curve[1][1] + 3 * mt * t**2 * curve[2][1] + t**3 * curve[3][1],
+def point(angle: float, radius: float = LOOP_RADIUS) -> tuple[float, float]:
+    cx, cy = LOOP_CENTER
+    return cx + radius * math.cos(angle), cy + radius * math.sin(angle)
+
+
+def arc_curves(start: float, end: float, radius: float) -> list[str]:
+    """Cubic Béziers along a circle from `start` to `end` (either direction)."""
+    steps = max(1, math.ceil(abs(end - start) / (math.pi / 4)))
+    span = (end - start) / steps
+    k = 4 / 3 * math.tan(span / 4) * radius
+    curves = []
+    for i in range(steps):
+        a0, a1 = start + i * span, start + (i + 1) * span
+        (x0, y0), (x1, y1) = point(a0, radius), point(a1, radius)
+        c1 = (x0 - k * math.sin(a0), y0 + k * math.cos(a0))
+        c2 = (x1 + k * math.sin(a1), y1 - k * math.cos(a1))
+        curves.append(f"C{c1[0]:.2f} {c1[1]:.2f} {c2[0]:.2f} {c2[1]:.2f} {x1:.2f} {y1:.2f}")
+    return curves
+
+
+def band_data(start: float, end: float) -> str:
+    """Closed outline of the loop's line between two angles, with square ends.
+
+    A filled outline rather than a stroke: Icon Composer (design generation 26)
+    highlights the implicit closing chord of open stroked paths.
+    """
+    outer, inner = LOOP_RADIUS + LINE_WIDTH / 2, LOOP_RADIUS - LINE_WIDTH / 2
+    x0, y0 = point(start, outer)
+    x1, y1 = point(end, inner)
+    return " ".join(
+        [f"M{x0:.2f} {y0:.2f}", *arc_curves(start, end, outer), f"L{x1:.2f} {y1:.2f}", *arc_curves(end, start, inner), "Z"]
     )
 
 
-def split(curve: Curve, t: float) -> tuple[Curve, Curve]:
-    def lerp(a: Point, b: Point) -> Point:
-        return (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)
-
-    a, b, c = lerp(curve[0], curve[1]), lerp(curve[1], curve[2]), lerp(curve[2], curve[3])
-    d, e = lerp(a, b), lerp(b, c)
-    f = lerp(d, e)
-    return [curve[0], a, d, f], [f, e, c, curve[3]]
-
-
-def segment(curve: Curve, t0: float, t1: float) -> Curve:
-    _, tail = split(curve, t0)
-    head, _ = split(tail, (t1 - t0) / (1 - t0))
-    return head
-
-
-def t_at_distance(curve: Curve, distance: float, anchor: Point) -> float:
-    """Parameter where the curve is `distance` away from `anchor` (one of its end points)."""
-    from_start = anchor == curve[0]
-    lo, hi = 0.0, 1.0
-    for _ in range(60):
-        mid = (lo + hi) / 2
-        x, y = point_at(curve, mid)
-        farther = math.hypot(x - anchor[0], y - anchor[1]) > distance
-        if from_start:
-            lo, hi = (lo, mid) if farther else (mid, hi)
-        else:
-            lo, hi = (mid, hi) if farther else (lo, mid)
-    return (lo + hi) / 2
-
-
-def arc_length_table(curve: Curve, steps: int = 800) -> list[float]:
-    lengths, previous = [0.0], point_at(curve, 0)
-    for i in range(1, steps + 1):
-        current = point_at(curve, i / steps)
-        lengths.append(lengths[-1] + math.hypot(current[0] - previous[0], current[1] - previous[1]))
-        previous = current
-    return lengths
-
-
-def t_at_length(table: list[float], length: float) -> float:
-    steps = len(table) - 1
-    for i in range(1, steps + 1):
-        if table[i] >= length:
-            span = table[i] - table[i - 1]
-            return (i - 1 + (length - table[i - 1]) / span) / steps if span else i / steps
-    return 1.0
-
-
-def path_data(curve: Curve) -> str:
-    x0, y0 = curve[0]
-    (x1, y1), (x2, y2), (x3, y3) = curve[1:]
-    return f"M{x0:.2f} {y0:.2f} C{x1:.2f} {y1:.2f} {x2:.2f} {y2:.2f} {x3:.2f} {y3:.2f}"
+BOTTOM = math.pi / 2
+TOP = math.pi * 3 / 2
 
 
 # MARK: - Layers
@@ -137,71 +100,49 @@ def svg(body: str) -> str:
     )
 
 
-def ring_outer_radius() -> float:
-    return RING_RADIUS + RING_WIDTH / 2
+def wedge_length() -> float:
+    return MARKER_SIZE * 0.38
 
 
 def track_layer(palette: Palette) -> str:
     # Butt end inside the ring band, so the gap between ring and dot stays clear.
-    t = t_at_distance(TRACK, RING_RADIUS - 6, anchor=MARKER)
-    visible, _ = split(TRACK, t)
-    return svg(
-        f'<path d="{path_data(visible)}" fill="none" stroke="{palette.track}" '
-        f'stroke-width="{TRACK_WIDTH}" stroke-linecap="butt"/>'
-    )
+    end = TOP - (MARKER_SIZE / 2 - 5) / LOOP_RADIUS
+    return svg(f'<path d="{band_data(BOTTOM, end)}" fill="{palette.track}"/>')
 
 
 def route_layer(palette: Palette) -> str:
-    # One sub-path per dash: Icon Composer draws hairlines across stroke-dasharray gaps.
-    wedge_tip = ring_outer_radius() + 4 + WEDGE_LENGTH
-    start = t_at_distance(ROUTE, wedge_tip + 26 + ROUTE_WIDTH / 2, anchor=MARKER)
-    _, ahead = split(ROUTE, start)
-    table = arc_length_table(ahead)
-    dash = DASH_LENGTH - ROUTE_WIDTH
-    dashes, offset = [], 0.0
-    while offset < table[-1]:
-        t0, t1 = t_at_length(table, offset), t_at_length(table, min(offset + dash, table[-1]))
-        dashes.append(path_data(segment(ahead, t0, t1)))
-        offset += DASH_LENGTH + DASH_GAP
-    return svg(
-        f'<path d="{" ".join(dashes)}" fill="none" stroke="{palette.route}" '
-        f'stroke-width="{ROUTE_WIDTH}" stroke-linecap="round"/>'
-    )
+    start = TOP + (MARKER_SIZE / 2 + wedge_length() + ROUTE_GAP) / LOOP_RADIUS
+    return svg(f'<path d="{band_data(start, BOTTOM + 2 * math.pi)}" fill="{palette.route}"/>')
 
 
 def ring_layer() -> str:
-    x, y = MARKER
-    return svg(f'<circle cx="{x:g}" cy="{y:g}" r="{RING_RADIUS}" fill="none" stroke="#FFFFFF" stroke-width="{RING_WIDTH}"/>')
+    x, y = point(TOP)
+    width = MARKER_SIZE * 2.5 / 18
+    return svg(
+        f'<circle cx="{x:g}" cy="{y:g}" r="{MARKER_SIZE / 2:g}" fill="none" stroke="#FFFFFF" '
+        f'stroke-width="{width:.2f}"/>'
+    )
 
 
 def dot_layer(palette: Palette) -> str:
-    x, y = MARKER
-    return svg(f'<circle cx="{x:g}" cy="{y:g}" r="{DOT_RADIUS}" fill="{palette.route}"/>')
+    x, y = point(TOP)
+    return svg(f'<circle cx="{x:g}" cy="{y:g}" r="{MARKER_SIZE * 0.275:g}" fill="{palette.route}"/>')
 
 
-def wedge_layer(palette: Palette) -> str:
-    """Rounded triangle just outside the ring, pointing along the route."""
-    x, y = MARKER
-    dx, dy = ROUTE[1][0] - x, ROUTE[1][1] - y
-    heading = math.degrees(math.atan2(dx, -dy))
-    base = ring_outer_radius() + 4
-    tip = base + WEDGE_LENGTH
-    r = WEDGE_CORNER
-    half = WEDGE_WIDTH / 2 - r * 1.2
-    corners = [(0.0, -(tip - r)), (-half, -(base + r)), (half, -(base + r))]
-    d = "M" + " L".join(f"{cx:.2f} {cy:.2f}" for cx, cy in corners) + " Z"
-    return svg(
-        f'<g transform="translate({x:g} {y:g}) rotate({heading:.2f})">'
-        f'<path d="{d}" fill="{palette.wedge}" stroke="{palette.wedge}" stroke-width="{2 * r}" '
-        f'stroke-linejoin="round"/></g>'
-    )
+def wedge_layer() -> str:
+    """Triangle on the ring pointing along the loop (clockwise at the top: right)."""
+    x, y = point(TOP)
+    base, tip = MARKER_SIZE / 2, MARKER_SIZE / 2 + wedge_length()
+    half = wedge_length() * 1.1 / 2
+    d = f"M{x + tip:.2f} {y:g} L{x + base:.2f} {y - half:.2f} L{x + base:.2f} {y + half:.2f} Z"
+    return svg(f'<path d="{d}" fill="#FFFFFF"/>')
 
 
 def layers(palette: Palette) -> dict[str, str]:
     return {
         "Dot.svg": dot_layer(palette),
         "Ring.svg": ring_layer(),
-        "Wedge.svg": wedge_layer(palette),
+        "Wedge.svg": wedge_layer(),
         "Track.svg": track_layer(palette),
         "Route.svg": route_layer(palette),
     }
@@ -230,31 +171,31 @@ def layer(name: str, dark: str | None = None) -> dict:
     return entry
 
 
-def group(name: str, members: list[dict]) -> dict:
+def group(name: str, members: list[dict], shadow: float) -> dict:
     return {
         "layers": members,
         "name": name,
-        "shadow": {"kind": "neutral", "opacity": 0.5},
+        "shadow": {"kind": "neutral", "opacity": shadow},
         "translucency": {"enabled": False, "value": 0.5},
     }
 
 
 def icon_document(platform: str) -> dict:
     if platform == "iOS":
-        # Light by default; the dark appearance swaps in the Watch palette.
+        # Light by default, like the map; the dark appearance swaps in the Watch palette.
         return {
             "fill-specializations": [{"value": background(LIGHT)}, {"appearance": "dark", "value": background(DARK)}],
             "groups": [
-                group("Marker", [layer("Dot", DARK.route), layer("Ring"), layer("Wedge", DARK.wedge)]),
-                group("Route", [layer("Track", DARK.track), layer("Route", DARK.route)]),
+                group("Marker", [layer("Dot", DARK.route), layer("Ring"), layer("Wedge")], 0.5),
+                group("Route", [layer("Track", DARK.track), layer("Route", DARK.route)], 0.45),
             ],
             "supported-platforms": {"squares": ["iOS"]},
         }
     return {
         "fill": background(DARK),
         "groups": [
-            group("Marker", [layer("Dot"), layer("Ring"), layer("Wedge")]),
-            group("Route", [layer("Track"), layer("Route")]),
+            group("Marker", [layer("Dot"), layer("Ring"), layer("Wedge")], 0.5),
+            group("Route", [layer("Track"), layer("Route")], 0.45),
         ],
         "supported-platforms": {"circles": ["watchOS"]},
     }
