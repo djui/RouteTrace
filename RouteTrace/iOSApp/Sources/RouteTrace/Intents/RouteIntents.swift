@@ -55,8 +55,9 @@ struct RouteAppEntityQuery: EntityStringQuery {
 }
 
 struct StartRouteOnWatchIntent: AppIntent {
-    static let title: LocalizedStringResource = "Start Route on Apple Watch"
-    static let description = IntentDescription("Opens RouteTrace on your Apple Watch and starts navigating the route.")
+    // App Store Connect rejects intent metadata that mentions "Apple", so these say "watch".
+    static let title: LocalizedStringResource = "Start Route on Watch"
+    static let description = IntentDescription("Opens RouteTrace on your watch and starts navigating the route.")
     /// The app sets up its Watch connection when it opens.
     static let openAppWhenRun: Bool = true
 
@@ -64,7 +65,7 @@ struct StartRouteOnWatchIntent: AppIntent {
     var route: RouteAppEntity
 
     static var parameterSummary: some ParameterSummary {
-        Summary("Start \(\.$route) on Apple Watch")
+        Summary("Start \(\.$route) on watch")
     }
 
     init() {}
@@ -100,8 +101,8 @@ struct RouteTraceShortcuts: AppShortcutsProvider {
                 "Navigate \(\.$route) with \(.applicationName)",
                 "Start \(\.$route) on my watch with \(.applicationName)"
             ],
-            shortTitle: "Start on Apple Watch",
-            systemImageName: "applewatch"
+            shortTitle: "Start on Watch",
+            systemImageName: "play.circle"
         )
         AppShortcut(
             intent: DownloadOfflineMapIntent(),
