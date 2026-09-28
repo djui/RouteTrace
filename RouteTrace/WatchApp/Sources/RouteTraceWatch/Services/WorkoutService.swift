@@ -17,6 +17,8 @@ final class WorkoutService: NSObject {
     private(set) var status: WorkoutServiceStatus = .ready
     private(set) var heartRateBPM: Double?
     private(set) var isHealthKitAvailable = HKHealthStore.isHealthDataAvailable()
+    /// Zones HealthKit uses for this workout, with the time in each so far (watchOS 27 and later).
+    private(set) var zones: [WorkoutZoneMetric: WorkoutZones] = [:]
 
     private let healthStore = HKHealthStore()
     private var session: HKWorkoutSession?
@@ -25,8 +27,20 @@ final class WorkoutService: NSObject {
     private var workoutStartDate: Date?
     private var activityKind: ActivityKind = .running
     private var insertedLocationCount = 0
+    /// Zone HealthKit last reported per metric; it only reports changes.
+    private var reportedZoneIndices: [WorkoutZoneMetric: Int] = [:]
 
     private static let heartRateUnit = HKUnit.count().unitDivided(by: .minute())
+
+    /// Workout zones need HealthKit from watchOS 27, and the SDK that ships with Xcode 27.
+    static var supportsWorkoutZones: Bool {
+        #if compiler(>=6.4)
+        if #available(watchOS 27.0, *) {
+            return true
+        }
+        #endif
+        return false
+    }
 
     var isSessionActive: Bool {
         switch status {
@@ -41,6 +55,17 @@ final class WorkoutService: NSObject {
         return builder.statistics(for: type)?.averageQuantity()?.doubleValue(for: Self.heartRateUnit)
     }
 
+    var heartRateZones: WorkoutZones? {
+        zones[.heartRate]
+    }
+
+    /// Current heart-rate zone. Until HealthKit reports one (it only reports changes, and not
+    /// again after a relaunch), the latest reading decides.
+    var heartRateZoneIndex: Int? {
+        guard let heartRateZones else { return nil }
+        return reportedZoneIndices[.heartRate] ?? heartRateBPM.map(heartRateZones.zoneIndex(for:))
+    }
+
     func requestAuthorization(for activityKind: ActivityKind) async {
         guard isHealthKitAvailable else {
             status = .unavailable("HealthKit is not available on this device.")
@@ -52,7 +77,12 @@ final class WorkoutService: NSObject {
             HKSeriesType.workoutRoute()
         ]
         var typesToRead: Set<HKObjectType> = [HKObjectType.workoutType()]
-        for identifier: HKQuantityTypeIdentifier in [.activeEnergyBurned, .distanceWalkingRunning, .distanceCycling] {
+        var identifiers: [HKQuantityTypeIdentifier] = [.activeEnergyBurned, .distanceWalkingRunning, .distanceCycling]
+        if activityKind.speedCategory == .cycling {
+            // Lets the workout record a paired power meter, which power zones are based on.
+            identifiers.append(.cyclingPower)
+        }
+        for identifier in identifiers {
             if let type = HKQuantityType.quantityType(forIdentifier: identifier) {
                 typesToShare.insert(type)
                 typesToRead.insert(type)
@@ -91,6 +121,7 @@ final class WorkoutService: NSObject {
             session.startActivity(with: startDate)
             try await builder.beginCollection(at: startDate)
             status = .running
+            Task { await loadZones(for: builder) }
         } catch {
             reset()
             status = .unavailable(error.localizedDescription)
@@ -113,6 +144,7 @@ final class WorkoutService: NSObject {
         builder.dataSource = HKLiveWorkoutDataSource(healthStore: healthStore, workoutConfiguration: recovered.workoutConfiguration)
         adopt(session: recovered, builder: builder, activityKind: activityKind, startDate: startDate)
         status = recovered.state == .paused ? .paused : .running
+        Task { await loadZones(for: builder) }
         return true
     }
 
@@ -140,15 +172,16 @@ final class WorkoutService: NSObject {
         }
     }
 
-    /// Ends the session and saves the workout (with its route) to Health.
+    /// Ends the session and saves the workout (with its route) to Health. Returns the time in
+    /// zones HealthKit recorded, which is empty before watchOS 27.
     @discardableResult
     func finishWorkout(
         endDate: Date,
         title: String,
         activityId: UUID,
         gpsDistanceMeters: Double
-    ) async -> HKWorkout? {
-        guard let session, let builder else { return nil }
+    ) async -> [WorkoutZones] {
+        guard let session, let builder else { return [] }
         defer { reset() }
 
         session.end()
@@ -161,17 +194,25 @@ final class WorkoutService: NSObject {
                 HKMetadataKeyWorkoutBrandName: title
             ])
 
-            guard let workout = try await builder.finishWorkout() else { return nil }
+            guard let workout = try await builder.finishWorkout() else {
+                return recordedZones(builder: builder, workout: nil)
+            }
 
             if let routeBuilder, insertedLocationCount > 0 {
                 _ = try? await routeBuilder.finishRoute(with: workout, metadata: [HKMetadataKeyWorkoutBrandName: title])
             }
             status = .ready
-            return workout
+            return recordedZones(builder: builder, workout: workout)
         } catch {
             status = .unavailable(error.localizedDescription)
-            return nil
+            return recordedZones(builder: builder, workout: nil)
         }
+    }
+
+    /// Time in zones so far, for the summary shown before the workout is saved.
+    func zonesSoFar() -> [WorkoutZones] {
+        guard let builder else { return [] }
+        return recordedZones(builder: builder, workout: nil)
     }
 
     /// Ends the session without saving anything to Health (the user discarded the activity).
@@ -214,6 +255,8 @@ final class WorkoutService: NSObject {
         self.workoutStartDate = startDate
         self.activityKind = activityKind
         self.insertedLocationCount = 0
+        self.zones = [:]
+        self.reportedZoneIndices = [:]
     }
 
     private func reset() {
@@ -223,6 +266,57 @@ final class WorkoutService: NSObject {
         workoutStartDate = nil
         insertedLocationCount = 0
         heartRateBPM = nil
+        zones = [:]
+        reportedZoneIndices = [:]
+    }
+
+    // MARK: - Workout zones
+
+    /// Picks up the zones HealthKit applies to this workout: the person's zones from Health
+    /// settings, which Health computes itself unless they set their own. Runs on its own so a
+    /// slow answer never holds up the start.
+    private func loadZones(for builder: HKLiveWorkoutBuilder) async {
+        #if compiler(>=6.4)
+        guard #available(watchOS 27.0, *) else { return }
+        for metric in WorkoutZoneMetric.metrics(for: activityKind) {
+            let type = metric.quantityType
+            guard let configuration = try? await builder.zoneConfiguration(for: type),
+                  let loaded = WorkoutZones(
+                      configuration,
+                      metric: metric,
+                      durations: builder.zoneGroup(for: type)?.zoneDurations ?? []
+                  ) else { continue }
+            // A live update may have arrived while this was loading, or the workout ended.
+            guard self.builder === builder else { return }
+            if zones[metric] == nil {
+                zones[metric] = loaded
+            }
+        }
+        #endif
+    }
+
+    /// Final time in zones: what HealthKit holds for the workout, else the last live update.
+    /// Zones without any time (no power meter, no heart rate) are left out.
+    private func recordedZones(builder: HKLiveWorkoutBuilder, workout: HKWorkout?) -> [WorkoutZones] {
+        let recorded = zones.merging(healthKitZones(builder: builder, workout: workout)) { _, saved in saved }
+        return WorkoutZoneMetric.allCases.compactMap { recorded[$0] }.filter { $0.totalSeconds > 0 }
+    }
+
+    /// Zones from the saved workout if there is one, else from the builder.
+    private func healthKitZones(builder: HKLiveWorkoutBuilder, workout: HKWorkout?) -> [WorkoutZoneMetric: WorkoutZones] {
+        #if compiler(>=6.4)
+        guard #available(watchOS 27.0, *) else { return [:] }
+        var result: [WorkoutZoneMetric: WorkoutZones] = [:]
+        for metric in WorkoutZoneMetric.allCases {
+            let type = metric.quantityType
+            if let group = workout?.zoneGroup(for: type) ?? builder.zoneGroup(for: type) {
+                result[metric] = WorkoutZones(group, metric: metric)
+            }
+        }
+        return result
+        #else
+        return [:]
+        #endif
     }
 
     private static func hkActivityType(for kind: ActivityKind) -> HKWorkoutActivityType {
@@ -280,4 +374,84 @@ extension WorkoutService: HKLiveWorkoutBuilderDelegate {
             heartRateBPM = bpm
         }
     }
+
+    #if compiler(>=6.4)
+    @available(watchOS 27.0, *)
+    nonisolated func workoutBuilder(
+        _ workoutBuilder: HKLiveWorkoutBuilder,
+        didUpdateWorkoutZone zoneUpdate: HKLiveWorkoutZoneUpdate
+    ) {
+        guard let group = zoneUpdate.zoneGroup,
+              let metric = WorkoutZoneMetric(group.configuration.quantityType),
+              let updated = WorkoutZones(group, metric: metric) else { return }
+        let current = zoneUpdate.currentZoneDuration.flatMap { group.configuration.position(of: $0.zone) }
+
+        Task { @MainActor in
+            guard builder === workoutBuilder else { return }
+            zones[metric] = updated
+            reportedZoneIndices[metric] = current
+        }
+    }
+    #endif
 }
+
+extension WorkoutZoneMetric {
+    var quantityType: HKQuantityType {
+        switch self {
+        case .heartRate: HKQuantityType(.heartRate)
+        case .cyclingPower: HKQuantityType(.cyclingPower)
+        }
+    }
+
+    var healthKitUnit: HKUnit {
+        switch self {
+        case .heartRate: .count().unitDivided(by: .minute())
+        case .cyclingPower: .watt()
+        }
+    }
+
+    init?(_ quantityType: HKQuantityType) {
+        guard let metric = Self.allCases.first(where: { $0.quantityType == quantityType }) else { return nil }
+        self = metric
+    }
+}
+
+#if compiler(>=6.4)
+@available(watchOS 27.0, *)
+extension HKWorkoutZoneConfiguration {
+    /// Position of a zone counted from the lowest; HealthKit's own zone index isn't documented
+    /// as starting at 0 or 1.
+    func position(of zone: HKWorkoutZone) -> Int? {
+        zones.map(\.index).sorted().firstIndex(of: zone.index)
+    }
+}
+
+@available(watchOS 27.0, *)
+extension WorkoutZones {
+    init?(_ configuration: HKWorkoutZoneConfiguration, metric: WorkoutZoneMetric, durations: [HKWorkoutZoneDuration]) {
+        let unit = metric.healthKitUnit
+        let ordered = configuration.zones.sorted { $0.index < $1.index }
+        let boundaries = ordered.dropFirst().compactMap { $0.minimum?.doubleValue(for: unit) }
+        guard !ordered.isEmpty, boundaries.count == ordered.count - 1 else { return nil }
+
+        var seconds = Array(repeating: 0.0, count: ordered.count)
+        for entry in durations {
+            if let position = configuration.position(of: entry.zone) {
+                seconds[position] += entry.duration
+            }
+        }
+
+        let source: Source? = switch configuration.source {
+        case .system: .system
+        case .user: .user
+        case .app: .app
+        @unknown default: nil
+        }
+        self.init(metric: metric, boundaries: boundaries, secondsInZone: seconds, source: source)
+    }
+
+    init?(_ group: HKWorkoutZoneGroup, metric: WorkoutZoneMetric) {
+        self.init(group.configuration, metric: metric, durations: group.zoneDurations)
+    }
+}
+#endif

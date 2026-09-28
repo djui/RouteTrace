@@ -32,6 +32,7 @@ struct ActivityResultView: View {
                 heroMap
                 summaryCard
                 statsCard
+                zonesSection
                 chartsSection
             }
             .padding(.horizontal)
@@ -80,7 +81,8 @@ struct ActivityResultView: View {
                 title: activity.displayTitle,
                 subtitle: "\(RouteFormatting.distance(summary.distanceMeters)) · \(RouteFormatting.duration(summary.elapsedSeconds))",
                 routePoints: plannedRoute,
-                trackPoints: recording?.trackPoints ?? []
+                trackPoints: recording?.trackPoints ?? [],
+                trackZones: recording?.workoutZones(for: .heartRate)
             )
         }
         .alert("Couldn’t Complete Action", isPresented: Binding(
@@ -114,6 +116,7 @@ struct ActivityResultView: View {
                     RouteMapPreview(
                         routePoints: plannedRoute,
                         trackPoints: recording.trackPoints,
+                        trackZones: recording.workoutZones(for: .heartRate),
                         routeColor: RouteDesign.routeColor.opacity(0.55)
                     )
                 } else {
@@ -195,6 +198,26 @@ struct ActivityResultView: View {
             )
         }
         .card()
+    }
+
+    @ViewBuilder
+    private var zonesSection: some View {
+        ForEach(recording?.workoutZones ?? [], id: \.metric) { zones in
+            VStack(alignment: .leading, spacing: 12) {
+                CardHeader(
+                    title: zones.metric.displayName,
+                    systemImage: zones.metric.systemImage,
+                    trailing: zones.dominantZoneIndex.map { "Mostly \(WorkoutZones.name(ofZone: $0))" }
+                )
+                ZoneTimeChart(zones: zones)
+                if zones.metric == .heartRate {
+                    Text("The map colors your track by these zones.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .card()
+        }
     }
 
     @ViewBuilder

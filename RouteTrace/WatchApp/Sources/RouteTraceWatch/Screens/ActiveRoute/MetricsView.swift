@@ -42,7 +42,8 @@ struct MetricsView: View {
                         value: viewModel.workoutService.heartRateBPM.map { "\(Int($0.rounded()))" } ?? "--",
                         unit: "BPM",
                         symbol: "heart.fill",
-                        symbolTint: .red
+                        symbolTint: .red,
+                        badge: heartRateZoneBadge
                     )
 
                     Divider()
@@ -70,6 +71,18 @@ struct MetricsView: View {
         }
     }
 
+    private var heartRateZoneBadge: MetricBadge? {
+        let workout = viewModel.workoutService
+        guard workout.heartRateBPM != nil,
+              let zones = workout.heartRateZones,
+              let index = workout.heartRateZoneIndex else { return nil }
+        return MetricBadge(
+            text: "Z\(index + 1)",
+            accessibilityLabel: WorkoutZones.name(ofZone: index),
+            tint: zones.color(forZone: index)
+        )
+    }
+
     private func detailRow(_ title: String, _ value: String, _ symbol: String) -> some View {
         HStack(spacing: 8) {
             Image(systemName: symbol)
@@ -88,6 +101,13 @@ struct MetricsView: View {
     }
 }
 
+/// Small tinted capsule after a metric, such as the current heart-rate zone.
+struct MetricBadge {
+    let text: String
+    let accessibilityLabel: String
+    let tint: Color
+}
+
 struct MetricLine: View {
     let value: String
     var unit: String?
@@ -96,6 +116,7 @@ struct MetricLine: View {
     var symbolTint: Color = .secondary
     var tint: Color = .primary
     var size: CGFloat = 32
+    var badge: MetricBadge?
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 3) {
@@ -114,6 +135,15 @@ struct MetricLine: View {
                 Image(systemName: symbol)
                     .font(.system(size: size * 0.45))
                     .foregroundStyle(symbolTint)
+            }
+            if let badge {
+                Text(badge.text)
+                    .font(.system(size: size * 0.42, weight: .bold, design: .rounded))
+                    .foregroundStyle(.black)
+                    .padding(.horizontal, 5)
+                    .background(badge.tint, in: Capsule())
+                    .padding(.leading, 3)
+                    .accessibilityLabel(badge.accessibilityLabel)
             }
             if let caption {
                 Text(caption)

@@ -30,6 +30,11 @@ final class WatchPreferences {
         didSet { UserDefaults.standard.set(navigationNotificationsEnabled, forKey: Keys.navigationNotificationsEnabled) }
     }
 
+    /// Off by default, like zone alerts in the Workout app: turn haptics come first here.
+    var zoneAlertsEnabled: Bool {
+        didSet { UserDefaults.standard.set(zoneAlertsEnabled, forKey: Keys.zoneAlertsEnabled) }
+    }
+
     var runningSpeedDisplay: SpeedDisplayMode {
         didSet { UserDefaults.standard.set(runningSpeedDisplay.rawValue, forKey: Keys.runningSpeedDisplay) }
     }
@@ -61,6 +66,7 @@ final class WatchPreferences {
         static let mapFollowMode = "watch.mapFollowMode"
         static let useHealthKitWorkouts = "watch.useHealthKitWorkouts"
         static let navigationNotificationsEnabled = "watch.navigationNotificationsEnabled"
+        static let zoneAlertsEnabled = "watch.zoneAlertsEnabled"
         static let runningSpeedDisplay = "watch.runningSpeedDisplay"
         static let cyclingSpeedDisplay = "watch.cyclingSpeedDisplay"
         static let ultraSaverHealthKitPromptShown = "watch.ultraSaverHealthKitPromptShown"
@@ -93,6 +99,7 @@ final class WatchPreferences {
         } else {
             navigationNotificationsEnabled = UserDefaults.standard.bool(forKey: Keys.navigationNotificationsEnabled)
         }
+        zoneAlertsEnabled = UserDefaults.standard.bool(forKey: Keys.zoneAlertsEnabled)
         runningSpeedDisplay = SpeedDisplayMode(
             rawValue: UserDefaults.standard.string(forKey: Keys.runningSpeedDisplay) ?? ""
         ) ?? .pace
@@ -154,10 +161,14 @@ struct SettingsView: View {
 
             Section {
                 Toggle("Record HealthKit Workout", isOn: $preferences.useHealthKitWorkouts)
+                if WorkoutService.supportsWorkoutZones {
+                    Toggle("Zone Alerts", isOn: $preferences.zoneAlertsEnabled)
+                        .disabled(!preferences.useHealthKitWorkouts)
+                }
             } header: {
                 Text("Workout")
             } footer: {
-                Text("Turn off to navigate without heart rate or workout session overhead.")
+                Text(workoutSectionFooter)
             }
 
             Section {
@@ -193,6 +204,14 @@ struct SettingsView: View {
         } message: {
             Text("Ultra Saver works best without HealthKit workout recording.")
         }
+    }
+
+    private var workoutSectionFooter: String {
+        var text = "Turn off to navigate without heart rate or workout session overhead."
+        if WorkoutService.supportsWorkoutZones {
+            text += " Zone alerts tap when your heart rate settles in a new zone, using your zones from Health."
+        }
+        return text
     }
 
     private var mapSectionFooter: String {

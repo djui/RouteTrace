@@ -2,10 +2,13 @@ import MapKit
 import SwiftUI
 import RouteTraceShared
 
-/// Planned route (blue) and optional recorded track (green) on a map, framed to fit.
+/// Planned route (blue) and optional recorded track (green, or in zone colours) on a map,
+/// framed to fit.
 struct RouteMapPreview: View {
     private let routeCoordinates: [CLLocationCoordinate2D]
     private let trackSegments: [TrackSegment]
+    private let trackZones: WorkoutZones?
+    private let zoneSegments: [ZonedTrackSegment]
     private let allCoordinates: [CLLocationCoordinate2D]
     private let isLoop: Bool
 
@@ -18,9 +21,11 @@ struct RouteMapPreview: View {
 
     @State private var cameraPosition: MapCameraPosition = .automatic
 
+    /// With `trackZones`, the track takes the colour of the zone its recorded heart rate was in.
     init(
         routePoints: [RoutePoint],
         trackPoints: [TrackPoint] = [],
+        trackZones: WorkoutZones? = nil,
         routeColor: Color = RouteDesign.routeColor,
         trackColor: Color = RouteDesign.trackColor,
         interactive: Bool = false,
@@ -29,6 +34,12 @@ struct RouteMapPreview: View {
     ) {
         routeCoordinates = routePoints.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
         trackSegments = trackPoints.count >= 2 ? TrackSegmentSplitter.segments(from: trackPoints) : []
+        self.trackZones = trackZones
+        if let trackZones, trackPoints.count >= 2 {
+            zoneSegments = ZonedTrackSegmenter.segments(from: trackPoints, zones: trackZones)
+        } else {
+            zoneSegments = []
+        }
         allCoordinates = routeCoordinates
             + trackPoints.map { CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude) }
         if let first = routePoints.first, let last = routePoints.last, routePoints.count > 1 {
@@ -52,16 +63,40 @@ struct RouteMapPreview: View {
                     .stroke(routeColor, style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round))
             }
 
-            ForEach(Array(trackSegments.enumerated()), id: \.offset) { _, segment in
-                let coordinates = segment.coordinates.map {
-                    CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)
+            if zoneSegments.isEmpty {
+                ForEach(Array(trackSegments.enumerated()), id: \.offset) { _, segment in
+                    let coordinates = segment.coordinates.map {
+                        CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)
+                    }
+                    if segment.isGapConnector {
+                        MapPolyline(coordinates: coordinates)
+                            .stroke(Color.secondary.opacity(0.7), style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [2, 5]))
+                    } else {
+                        MapPolyline(coordinates: coordinates)
+                            .stroke(trackColor, style: StrokeStyle(lineWidth: 3.5, lineCap: .round, lineJoin: .round))
+                    }
                 }
-                if segment.isGapConnector {
-                    MapPolyline(coordinates: coordinates)
-                        .stroke(Color.secondary.opacity(0.7), style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [2, 5]))
-                } else {
-                    MapPolyline(coordinates: coordinates)
-                        .stroke(trackColor, style: StrokeStyle(lineWidth: 3.5, lineCap: .round, lineJoin: .round))
+            } else {
+                // A light casing keeps the blue easy zone apart from the blue planned route.
+                ForEach(Array(trackSegments.enumerated()), id: \.offset) { _, segment in
+                    if !segment.isGapConnector {
+                        MapPolyline(coordinates: segment.coordinates.map {
+                            CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)
+                        })
+                        .stroke(.white.opacity(0.9), style: StrokeStyle(lineWidth: 6, lineCap: .round, lineJoin: .round))
+                    }
+                }
+                ForEach(Array(zoneSegments.enumerated()), id: \.offset) { _, segment in
+                    let coordinates = segment.coordinates.map {
+                        CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)
+                    }
+                    if segment.isGapConnector {
+                        MapPolyline(coordinates: coordinates)
+                            .stroke(Color.secondary.opacity(0.7), style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [2, 5]))
+                    } else {
+                        MapPolyline(coordinates: coordinates)
+                            .stroke(zoneColor(for: segment), style: StrokeStyle(lineWidth: 3.5, lineCap: .round, lineJoin: .round))
+                    }
                 }
             }
 
@@ -83,6 +118,11 @@ struct RouteMapPreview: View {
         .mapControlVisibility(interactive ? .automatic : .hidden)
         .onAppear(perform: frameContent)
         .onChange(of: allCoordinates.count) { _, _ in frameContent() }
+    }
+
+    private func zoneColor(for segment: ZonedTrackSegment) -> Color {
+        guard let trackZones, let zone = segment.zoneIndex else { return trackColor }
+        return trackZones.color(forZone: zone)
     }
 
     private func frameContent() {
@@ -147,6 +187,7 @@ struct RouteMapFullscreenView: View {
     let subtitle: String
     let routePoints: [RoutePoint]
     let trackPoints: [TrackPoint]
+    var trackZones: WorkoutZones?
 
     @State private var style: Style = .standard
 
@@ -167,6 +208,7 @@ struct RouteMapFullscreenView: View {
         RouteMapPreview(
             routePoints: routePoints,
             trackPoints: trackPoints,
+            trackZones: trackZones,
             interactive: true,
             mapStyle: style.mapStyle,
             mapScope: mapScope

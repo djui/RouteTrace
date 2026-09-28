@@ -75,11 +75,18 @@ public struct ActivityRecording: Codable, Sendable, Identifiable {
     public var elevationGainMeters: Double?
     public var averageHeartRateBPM: Double?
     public var plannedRoutePoints: [RoutePoint]?
+    /// Time in heart-rate zones (and power zones on a bike with a power meter), from HealthKit on
+    /// watchOS 27 and later.
+    public var workoutZones: [WorkoutZones]?
 
     public var isActive: Bool { endedAt == nil }
 
     public var displayTitle: String {
         title ?? routeName
+    }
+
+    public func workoutZones(for metric: WorkoutZoneMetric) -> WorkoutZones? {
+        workoutZones?.first { $0.metric == metric }
     }
 
     public init(
@@ -96,7 +103,8 @@ public struct ActivityRecording: Codable, Sendable, Identifiable {
         offRouteEvents: [OffRouteEvent] = [],
         elevationGainMeters: Double? = nil,
         averageHeartRateBPM: Double? = nil,
-        plannedRoutePoints: [RoutePoint]? = nil
+        plannedRoutePoints: [RoutePoint]? = nil,
+        workoutZones: [WorkoutZones]? = nil
     ) {
         self.id = id
         self.routeId = routeId
@@ -112,6 +120,7 @@ public struct ActivityRecording: Codable, Sendable, Identifiable {
         self.elevationGainMeters = elevationGainMeters
         self.averageHeartRateBPM = averageHeartRateBPM
         self.plannedRoutePoints = plannedRoutePoints
+        self.workoutZones = workoutZones
     }
 
     /// Planned route points for the map overlay.

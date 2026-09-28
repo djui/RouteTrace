@@ -141,6 +141,7 @@ final class ActiveRouteViewModel {
     private var liveStats = LiveTrackStatistics()
     private var speedEstimator = SpeedEstimator()
     private var alertTracker = NavigationAlertTracker()
+    private var zoneAlertPolicy = ZoneChangeAlertPolicy()
     private var activeOffRouteEvent: OffRouteEvent?
     private var lastPersistenceAt: Date = .distantPast
     private var isWarmingUpGPS = false
@@ -324,6 +325,7 @@ final class ActiveRouteViewModel {
         currentSpeedMetersPerSecond = nil
         speedEstimator.reset()
         alertTracker.reset()
+        zoneAlertPolicy.reset()
         displayTrack = []
         rejoinGuidance = nil
         activeOffRouteEvent = nil
@@ -373,6 +375,10 @@ final class ActiveRouteViewModel {
         workoutService.pauseWorkout()
         recording.elapsedSeconds = elapsedSeconds
         recording.averageHeartRateBPM = averageHeartRateBPM
+        let zones = workoutService.zonesSoFar()
+        if !zones.isEmpty {
+            recording.workoutZones = zones
+        }
         phase = .summary
         persistActivity()
     }
@@ -404,12 +410,15 @@ final class ActiveRouteViewModel {
         )
 
         if workoutService.isSessionActive {
-            await workoutService.finishWorkout(
+            let zones = await workoutService.finishWorkout(
                 endDate: endDate,
                 title: finished.displayTitle,
                 activityId: finished.id,
                 gpsDistanceMeters: gpsDistanceMeters
             )
+            if !zones.isEmpty {
+                finished.workoutZones = zones
+            }
         }
 
         recording = finished
@@ -721,6 +730,18 @@ final class ActiveRouteViewModel {
             recording.elapsedSeconds = elapsedSeconds
             currentSpeedMetersPerSecond = speedEstimator.current(at: now)
             publishWidgetState()
+            checkZoneChange(at: now)
+        }
+    }
+
+    private func checkZoneChange(at now: Date) {
+        let change = zoneAlertPolicy.update(
+            zoneIndex: workoutService.heartRateZoneIndex,
+            at: now,
+            canAlert: RouteNotificationService.isQuietForZoneAlert(at: now)
+        )
+        if let change {
+            RouteNotificationService.deliverZoneChange(change)
         }
     }
 
