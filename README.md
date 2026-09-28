@@ -82,6 +82,8 @@ You can also run shared-module tests via Swift Package Manager:
 swift test
 ```
 
+The [Tests workflow](.github/workflows/tests.yml) runs the same command on every pull request and on pushes to `main`.
+
 ## TestFlight
 
 Release builds archive the **RouteTrace** scheme (iOS app with embedded Watch app and widget extension) and upload to TestFlight via [Fastlane](https://fastlane.tools).
