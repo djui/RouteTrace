@@ -259,7 +259,7 @@ public final class ActivityEntity {
     }
 
     public static func from(_ recording: ActivityRecording) -> ActivityEntity {
-        ActivityEntity(
+        let entity = ActivityEntity(
             id: recording.id,
             routeId: recording.routeId,
             routeName: recording.routeName,
@@ -275,6 +275,12 @@ public final class ActivityEntity {
             offRouteEvents: recording.offRouteEvents,
             plannedRoutePoints: recording.plannedRoutePoints
         )
+        // The initializer rebuilds the payload from the columns above; keep everything the
+        // recording carries (such as workout zones) instead.
+        if let payload = try? RouteTracePayloadCoding.encode(recording) {
+            entity.activityPayloadData = payload
+        }
+        return entity
     }
 }
 

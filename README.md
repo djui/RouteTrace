@@ -5,6 +5,7 @@ GPX route navigation for iPhone and Apple Watch.
 ## Requirements
 
 - Xcode 26 (iOS 26 / watchOS 26 SDKs)
+- Xcode 27 for heart-rate and power zones (HealthKit workout zones, watchOS 27). Builds with Xcode 26, including the TestFlight workflow, compile them out.
 - iPhone simulator or device for the iOS app
 - Paired Apple Watch simulator or device for full Watch connectivity testing
 

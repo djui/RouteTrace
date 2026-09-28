@@ -24,15 +24,35 @@ enum RouteNotificationService {
         }
     }
 
+    /// Keeps a zone haptic from running into a turn haptic, which would blur both patterns.
+    private static let zoneAlertQuietSeconds: TimeInterval = 8
+    private static var lastNavigationHapticAt: Date?
+
     static func deliver(_ alert: NavigationAlert) {
         guard WatchPreferences.shared.navigationNotificationsEnabled else { return }
 
         WKInterfaceDevice.current().play(haptic(for: alert))
+        lastNavigationHapticAt = Date()
 
         guard WKApplication.shared().applicationState == .background else { return }
         let (identifier, title, body) = notificationContent(for: alert)
         Task {
             await post(identifier: identifier, title: title, body: body, interruptionLevel: .timeSensitive)
+        }
+    }
+
+    static func isQuietForZoneAlert(at date: Date) -> Bool {
+        guard let lastNavigationHapticAt else { return true }
+        return date.timeIntervalSince(lastNavigationHapticAt) >= zoneAlertQuietSeconds
+    }
+
+    /// Haptic only: rising or falling tones say which way the heart rate moved, and the
+    /// Metrics page shows the zone.
+    static func deliverZoneChange(_ change: ZoneChangeAlertPolicy.Change) {
+        guard WatchPreferences.shared.zoneAlertsEnabled else { return }
+        switch change {
+        case .up: WKInterfaceDevice.current().play(.directionUp)
+        case .down: WKInterfaceDevice.current().play(.directionDown)
         }
     }
 

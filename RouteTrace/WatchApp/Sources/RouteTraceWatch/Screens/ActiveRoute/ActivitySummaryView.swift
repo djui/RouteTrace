@@ -49,6 +49,10 @@ struct ActivitySummaryView: View {
                         }
                     }
 
+                    ForEach(viewModel.recording.workoutZones ?? [], id: \.metric) { zones in
+                        ZoneTimeBar(zones: zones)
+                    }
+
                     if viewModel.routePackage != nil {
                         OverviewView(viewModel: viewModel, compact: true)
                             .frame(height: 110)

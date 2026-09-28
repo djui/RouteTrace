@@ -208,9 +208,21 @@ enum DemoData {
             offRouteEvents: offRouteEvents,
             elevationGainMeters: route.elevationGainMeters,
             averageHeartRateBPM: heartRates.reduce(0, +) / Double(max(heartRates.count, 1)),
-            plannedRoutePoints: route.route
+            plannedRoutePoints: route.route,
+            workoutZones: demoHeartRateZones(for: trackPoints).map { [$0] }
         )
         _ = try? store.saveActivity(recording)
+    }
+
+    /// Zones like the ones Health computes for a fit adult, with the demo track's time in each.
+    private static func demoHeartRateZones(for trackPoints: [TrackPoint]) -> WorkoutZones? {
+        guard let template = WorkoutZones(metric: .heartRate, boundaries: [133, 146, 158, 170]) else { return nil }
+        var seconds = Array(repeating: 0.0, count: template.zoneCount)
+        for (previous, point) in zip(trackPoints, trackPoints.dropFirst()) {
+            guard let bpm = point.heartRateBPM else { continue }
+            seconds[template.zoneIndex(for: bpm)] += point.timestamp.timeIntervalSince(previous.timestamp)
+        }
+        return WorkoutZones(metric: .heartRate, boundaries: template.boundaries, secondsInZone: seconds, source: .system)
     }
 
     private static func offset(_ coordinate: (Double, Double), east: Double, north: Double) -> (Double, Double) {

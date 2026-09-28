@@ -36,6 +36,10 @@ struct WatchActivityDetailView: View {
                         stat("Detours", "\(activity.offRouteEvents.count)")
                     }
                 }
+
+                ForEach(activity.workoutZones ?? [], id: \.metric) { zones in
+                    ZoneTimeBar(zones: zones)
+                }
             }
             .padding(.horizontal, 12)
             .padding(.bottom, 16)
