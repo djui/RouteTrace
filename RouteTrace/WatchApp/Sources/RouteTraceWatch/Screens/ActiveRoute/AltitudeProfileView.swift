@@ -98,7 +98,7 @@ struct AltitudeProfileView: View {
 
     @ViewBuilder
     private func header(_ profile: RouteElevationProfile) -> some View {
-        let elevation = profile.elevation(at: markerMeters).map(RouteFormatting.elevation) ?? "—"
+        let elevation = RouteFormatting.elevation(profile.elevation(at: markerMeters))
         if uiState.isAltitudeScrubbing {
             let ahead = uiState.altitudeCrownMeters - progressMeters
             HStack(alignment: .firstTextBaseline, spacing: 6) {

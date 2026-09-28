@@ -2,6 +2,7 @@ import Foundation
 import Observation
 import RouteTraceShared
 import WatchConnectivity
+import WidgetKit
 
 @MainActor
 @Observable
@@ -31,19 +32,20 @@ final class WatchConnectivityManager: NSObject {
         } else {
             isActivated = true
             isReachable = session.isReachable
-            if let batteryMode = Self.parseBatteryMode(from: session.receivedApplicationContext) {
-                applySyncedBatteryMode(batteryMode)
+            if let settings = SettingsSyncPayload(dictionary: session.receivedApplicationContext) {
+                applySyncedSettings(settings)
             }
             resendPendingActivities()
         }
     }
 
-    private func applySyncedBatteryMode(_ batteryMode: BatteryMode) {
-        WatchPreferences.shared.applySyncedBatteryMode(batteryMode)
-    }
-
-    private nonisolated static func parseBatteryMode(from context: [String: Any]) -> BatteryMode? {
-        SettingsSyncPayload(dictionary: context)?.batteryMode
+    private func applySyncedSettings(_ settings: SettingsSyncPayload) {
+        WatchPreferences.shared.applySyncedBatteryMode(settings.batteryMode)
+        if UnitPreference.shared.system != settings.unitSystem {
+            UnitPreference.shared.system = settings.unitSystem
+            // Complications show distances too.
+            WidgetCenter.shared.reloadAllTimelines()
+        }
     }
 
     // MARK: - Activities
@@ -183,12 +185,12 @@ extension WatchConnectivityManager: WCSessionDelegate {
         let activated = activationState == .activated
         let reachable = session.isReachable
         let message = error?.localizedDescription
-        let batteryMode = activated ? Self.parseBatteryMode(from: session.receivedApplicationContext) : nil
+        let settings = activated ? SettingsSyncPayload(dictionary: session.receivedApplicationContext) : nil
         Task { @MainActor in
             isActivated = activated
             isReachable = reachable
-            if let batteryMode {
-                applySyncedBatteryMode(batteryMode)
+            if let settings {
+                applySyncedSettings(settings)
             }
             lastSyncMessage = message
             if activated {
@@ -198,10 +200,10 @@ extension WatchConnectivityManager: WCSessionDelegate {
     }
 
     nonisolated func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) {
-        let batteryMode = Self.parseBatteryMode(from: applicationContext)
+        let settings = SettingsSyncPayload(dictionary: applicationContext)
         Task { @MainActor in
-            if let batteryMode {
-                applySyncedBatteryMode(batteryMode)
+            if let settings {
+                applySyncedSettings(settings)
             }
         }
     }

@@ -145,10 +145,10 @@ final class PhoneConnectivityManager: NSObject, ObservableObject {
         isWatchAppInstalled = session.isWatchAppInstalled
     }
 
-    func syncSettingsToWatch(batteryMode: BatteryMode) {
+    func syncSettingsToWatch(batteryMode: BatteryMode, unitSystem: UnitSystem = UnitPreference.shared.system) {
         // Without a paired watch this fails by design; that is not something to alert about.
         guard let session, session.activationState == .activated, canTransferToWatch else { return }
-        let payload = SettingsSyncPayload(batteryMode: batteryMode)
+        let payload = SettingsSyncPayload(batteryMode: batteryMode, unitSystem: unitSystem)
         do {
             try session.updateApplicationContext(payload.dictionaryRepresentation)
         } catch {

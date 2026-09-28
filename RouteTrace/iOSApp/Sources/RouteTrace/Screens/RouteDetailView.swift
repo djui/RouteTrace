@@ -165,7 +165,7 @@ struct RouteDetailView: View {
                     points: points,
                     color: RouteDesign.routeColor,
                     seriesName: "Elevation",
-                    unit: "m"
+                    valueUnit: .elevation
                 )
             }
             .card()

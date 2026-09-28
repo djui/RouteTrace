@@ -35,7 +35,7 @@ struct MetricsView: View {
                     )
                     MetricLine(
                         value: MetricText.speedValue(viewModel.currentSpeedMetersPerSecond, mode: speedMode),
-                        unit: speedMode == .pace ? "/KM" : "KM/H",
+                        unit: (speedMode == .pace ? RouteFormatting.paceSymbol() : RouteFormatting.speedSymbol()).uppercased(),
                         caption: speedMode == .pace ? "PACE" : "SPEED"
                     )
                     MetricLine(
@@ -128,28 +128,45 @@ struct MetricLine: View {
 
 /// Number and unit separately, for large-number layouts.
 enum MetricText {
-    static func distanceValue(_ meters: Double) -> String {
-        meters >= 1000
-            ? (meters / 1000).formatted(.number.precision(.fractionLength(2)))
-            : meters.formatted(.number.precision(.fractionLength(0)))
+    static func distanceValue(_ meters: Double, units: DisplayUnits = UnitPreference.shared.units) -> String {
+        if usesLargeUnit(meters, units: units) {
+            return RouteFormatting.distanceValue(meters, units: units).formatted(.number.precision(.fractionLength(2)))
+        }
+        let small = units.distance == .miles ? meters / DisplayUnits.metersPerFoot : meters
+        return small.formatted(.number.precision(.fractionLength(0)))
     }
 
-    static func distanceUnit(_ meters: Double) -> String {
-        meters >= 1000 ? "KM" : "M"
+    static func distanceUnit(_ meters: Double, units: DisplayUnits = UnitPreference.shared.units) -> String {
+        switch units.distance {
+        case .kilometers: usesLargeUnit(meters, units: units) ? "KM" : "M"
+        case .miles: usesLargeUnit(meters, units: units) ? "MI" : "FT"
+        }
     }
 
-    static func speedValue(_ metersPerSecond: Double?, mode: SpeedDisplayMode) -> String {
+    static func speedValue(
+        _ metersPerSecond: Double?,
+        mode: SpeedDisplayMode,
+        units: DisplayUnits = UnitPreference.shared.units
+    ) -> String {
         guard let metersPerSecond, metersPerSecond > 0.3 else {
             return mode == .pace ? "--:--" : "--"
         }
         switch mode {
         case .pace:
-            let secondsPerKm = 1000 / metersPerSecond
-            guard secondsPerKm < 60 * 60 else { return "--:--" }
-            let total = Int(secondsPerKm.rounded())
+            let secondsPerUnit = units.metersPerDistanceUnit / metersPerSecond
+            guard secondsPerUnit < 60 * 60 else { return "--:--" }
+            let total = Int(secondsPerUnit.rounded())
             return String(format: "%d:%02d", total / 60, total % 60)
         case .speed:
-            return (metersPerSecond * 3.6).formatted(.number.precision(.fractionLength(1)))
+            return (metersPerSecond * 3600 / units.metersPerDistanceUnit).formatted(.number.precision(.fractionLength(1)))
+        }
+    }
+
+    /// Kilometres from 1 km, miles from a tenth of a mile; metres or feet below that.
+    private static func usesLargeUnit(_ meters: Double, units: DisplayUnits) -> Bool {
+        switch units.distance {
+        case .kilometers: meters >= 1000
+        case .miles: meters / DisplayUnits.metersPerMile >= 0.1
         }
     }
 }

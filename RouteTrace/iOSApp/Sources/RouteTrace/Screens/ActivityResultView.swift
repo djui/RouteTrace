@@ -205,7 +205,7 @@ struct ActivityResultView: View {
         if elevation.count >= 2 {
             VStack(alignment: .leading, spacing: 12) {
                 CardHeader(title: "Elevation", systemImage: "mountain.2.fill")
-                ProfileChart(points: elevation, color: RouteDesign.trackColor, seriesName: "Elevation", unit: "m")
+                ProfileChart(points: elevation, color: RouteDesign.trackColor, seriesName: "Elevation", valueUnit: .elevation)
             }
             .card()
         }
@@ -217,7 +217,7 @@ struct ActivityResultView: View {
                     systemImage: "heart.fill",
                     trailing: heartRateRangeText(heartRate)
                 )
-                ProfileChart(points: heartRate, color: .red, seriesName: "Heart Rate", unit: "bpm", fillsArea: false)
+                ProfileChart(points: heartRate, color: .red, seriesName: "Heart Rate", valueUnit: .fixed("bpm"), fillsArea: false)
             }
             .card()
         }

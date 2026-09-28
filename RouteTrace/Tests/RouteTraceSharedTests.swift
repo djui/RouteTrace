@@ -1044,9 +1044,17 @@ final class RouteTraceSharedTests: XCTestCase {
     }
 
     func testSettingsSyncPayloadRoundTrip() {
-        let payload = SettingsSyncPayload(batteryMode: .saver)
+        let payload = SettingsSyncPayload(batteryMode: .saver, unitSystem: .imperial)
         let restored = SettingsSyncPayload(dictionary: payload.dictionaryRepresentation)
-        XCTAssertEqual(restored?.batteryMode, .saver)
+        XCTAssertEqual(restored, payload)
+    }
+
+    func testSettingsSyncPayloadWithoutUnitsFollowsRegion() {
+        let legacy: [String: Any] = [
+            SettingsSyncKeys.type: SettingsSyncKeys.settingsSync,
+            SettingsSyncKeys.batteryMode: BatteryMode.normal.rawValue
+        ]
+        XCTAssertEqual(SettingsSyncPayload(dictionary: legacy)?.unitSystem, .automatic)
     }
 
     private func sampleRoutePackage(hasElevation: Bool, elevationGainMeters: Double?) -> RoutePackage {
