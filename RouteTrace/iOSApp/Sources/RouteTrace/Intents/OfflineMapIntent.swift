@@ -8,7 +8,8 @@ import RouteTraceShared
 struct DownloadOfflineMapIntent: AppIntent, ProgressReportingIntent {
     static let title: LocalizedStringResource = "Download Offline Map"
     static let description = IntentDescription(
-        "Downloads the map along a route for use without a connection and sends it to your Apple Watch."
+        // App Store Connect rejects intent metadata that mentions "Apple".
+        "Downloads the map along a route for use without a connection and sends it to your watch."
     )
     static let openAppWhenRun: Bool = false
 
