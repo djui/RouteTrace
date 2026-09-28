@@ -83,8 +83,12 @@ struct RouteTraceRootView: View {
         let manager = PhoneConnectivityManager(context: modelContext, routeStore: store)
         let autoTransfer = RouteWatchAutoTransfer(routeStore: store, connectivityManager: manager)
         autoTransfer.registerWithRouteStore()
-        manager.onSessionActivated = { [weak autoTransfer] in
+        manager.onSessionActivated = { [weak autoTransfer, weak manager] in
             autoTransfer?.transferPendingRoutes()
+            // Catches a watch that installed the app after the last reorder.
+            if let order = RouteOrderStore.shared.order {
+                manager?.sendRouteOrder(order)
+            }
         }
         connectivityManager = manager
         watchAutoTransfer = autoTransfer

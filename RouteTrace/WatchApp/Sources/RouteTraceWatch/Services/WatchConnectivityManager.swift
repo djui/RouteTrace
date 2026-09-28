@@ -136,6 +136,11 @@ final class WatchConnectivityManager: NSObject {
         ])
     }
 
+    /// Tells the iPhone about a reorder made here; the newer order wins there.
+    func sendRouteOrder(_ order: RouteOrder) {
+        send(order.dictionaryRepresentation)
+    }
+
     /// Sends immediately when the iPhone is reachable, otherwise queues for guaranteed delivery.
     private func send(_ payload: [String: Any]) {
         guard let session, session.activationState == .activated else { return }
@@ -169,6 +174,10 @@ final class WatchConnectivityManager: NSObject {
     }
 
     private func handleUserInfo(_ userInfo: [String: Any]) async {
+        if let order = RouteOrder(dictionary: userInfo) {
+            RouteOrderStore.shared.apply(order)
+            return
+        }
         guard userInfo["type"] as? String == WatchMessageType.routeDeleted,
               let idString = userInfo["routeId"] as? String,
               let routeID = UUID(uuidString: idString) else { return }

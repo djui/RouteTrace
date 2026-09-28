@@ -58,6 +58,7 @@
 		3b6480966a9129eed478414e /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Theme/RouteAppearance.swift in Sources */ = {isa = PBXBuildFile; fileRef = 318c64df116bf79b1c0f2184 /* RouteTrace/WatchApp/Sources/RouteTraceWatch/Theme/RouteAppearance.swift */; };
 		39bb9a3563c5b73f1e1f3e66 /* RouteTrace/WatchApp/Sources/RouteTraceWatch/ViewModels/ActiveRouteViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3ed694a0018f06dbc122c54a /* RouteTrace/WatchApp/Sources/RouteTraceWatch/ViewModels/ActiveRouteViewModel.swift */; };
 		3649ff6badf1a55687b08b5a /* RouteTrace/WatchWidgets/Sources/RouteTraceWatchWidgets/ActiveRouteWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31da9798106bfc19e26f024d /* RouteTrace/WatchWidgets/Sources/RouteTraceWatchWidgets/ActiveRouteWidget.swift */; };
+		3a95bc58e6ba1f8a89975042 /* RouteTrace/Tests/RouteOrderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37e16ba06c5cdf522e4355c4 /* RouteTrace/Tests/RouteOrderTests.swift */; };
 		352e989faa454f9654476e4a /* RouteTrace/Tests/RouteTraceCoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3c5fdd52f5b7df67a30c66db /* RouteTrace/Tests/RouteTraceCoreTests.swift */; };
 		386a33bf639a0e460f709564 /* RouteTrace/Tests/RouteTraceSharedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 360f70c4089adb5b3559b2a1 /* RouteTrace/Tests/RouteTraceSharedTests.swift */; };
 		3e0bab7c53b66d0969eda3ec /* RouteTrace/Tests/WorkoutZonesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37080cc25da475ea0435dd6f /* RouteTrace/Tests/WorkoutZonesTests.swift */; };
@@ -115,6 +116,7 @@
 
 /* Begin PBXFileReference section */
 		3bba35c8e4655f77b22000cb /* RouteTrace/Tests/Fixtures */ = {isa = PBXFileReference; lastKnownFileType = folder; path = RouteTrace/Tests/Fixtures; sourceTree = "<group>"; };
+		37e16ba06c5cdf522e4355c4 /* RouteTrace/Tests/RouteOrderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteTrace/Tests/RouteOrderTests.swift; sourceTree = "<group>"; };
 		3c5fdd52f5b7df67a30c66db /* RouteTrace/Tests/RouteTraceCoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteTrace/Tests/RouteTraceCoreTests.swift; sourceTree = "<group>"; };
 		360f70c4089adb5b3559b2a1 /* RouteTrace/Tests/RouteTraceSharedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteTrace/Tests/RouteTraceSharedTests.swift; sourceTree = "<group>"; };
 		37080cc25da475ea0435dd6f /* RouteTrace/Tests/WorkoutZonesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteTrace/Tests/WorkoutZonesTests.swift; sourceTree = "<group>"; };
@@ -315,6 +317,7 @@
 		344624f25407e60b2571d6e8 /* Tests */ = {
 			isa = PBXGroup;
 			children = (
+				37e16ba06c5cdf522e4355c4 /* RouteTrace/Tests/RouteOrderTests.swift */,
 				3c5fdd52f5b7df67a30c66db /* RouteTrace/Tests/RouteTraceCoreTests.swift */,
 				360f70c4089adb5b3559b2a1 /* RouteTrace/Tests/RouteTraceSharedTests.swift */,
 				37080cc25da475ea0435dd6f /* RouteTrace/Tests/WorkoutZonesTests.swift */,
@@ -588,6 +591,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				3a95bc58e6ba1f8a89975042 /* RouteTrace/Tests/RouteOrderTests.swift in Sources */,
 				352e989faa454f9654476e4a /* RouteTrace/Tests/RouteTraceCoreTests.swift in Sources */,
 				386a33bf639a0e460f709564 /* RouteTrace/Tests/RouteTraceSharedTests.swift in Sources */,
 				3e0bab7c53b66d0969eda3ec /* RouteTrace/Tests/WorkoutZonesTests.swift in Sources */,
