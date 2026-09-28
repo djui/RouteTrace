@@ -17,10 +17,14 @@ WATCH_SOURCES = ROOT / "RouteTrace" / "WatchApp" / "Sources" / "RouteTraceWatch"
 TEST_SOURCES = ROOT / "RouteTrace" / "Tests"
 
 IOS_RESOURCES = [
+    ROOT / "RouteTrace" / "iOSApp" / "AppIcon.icon",
     ROOT / "RouteTrace" / "iOSApp" / "Assets.xcassets",
     ROOT / "RouteTrace" / "iOSApp" / "LaunchScreen.storyboard",
 ]
-WATCH_RESOURCES = [ROOT / "RouteTrace" / "WatchApp" / "Assets.xcassets"]
+WATCH_RESOURCES = [
+    ROOT / "RouteTrace" / "WatchApp" / "AppIcon.icon",
+    ROOT / "RouteTrace" / "WatchApp" / "Assets.xcassets",
+]
 TEST_RESOURCES = [ROOT / "RouteTrace" / "Tests" / "Fixtures"]
 
 IOS_SUPPORTING = [
@@ -56,6 +60,8 @@ def file_type(path: Path) -> str:
         return "text.plist.entitlements"
     if suffix == ".xcassets":
         return "folder.assetcatalog"
+    if suffix == ".icon":
+        return "folder.iconcomposer.icon"
     if suffix == ".storyboard":
         return "file.storyboard"
     return "folder"

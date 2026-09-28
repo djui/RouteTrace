@@ -58,8 +58,10 @@
 		3649ff6badf1a55687b08b5a /* RouteTrace/WatchWidgets/Sources/RouteTraceWatchWidgets/ActiveRouteWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31da9798106bfc19e26f024d /* RouteTrace/WatchWidgets/Sources/RouteTraceWatchWidgets/ActiveRouteWidget.swift */; };
 		352e989faa454f9654476e4a /* RouteTrace/Tests/RouteTraceCoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3c5fdd52f5b7df67a30c66db /* RouteTrace/Tests/RouteTraceCoreTests.swift */; };
 		386a33bf639a0e460f709564 /* RouteTrace/Tests/RouteTraceSharedTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 360f70c4089adb5b3559b2a1 /* RouteTrace/Tests/RouteTraceSharedTests.swift */; };
+		3cb0372c98ce73fac6e9bd68 /* RouteTrace/iOSApp/AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 3a74a90bc722573fb16b0e19 /* RouteTrace/iOSApp/AppIcon.icon */; };
 		3b8ea933bafbcf276c8ddfc9 /* RouteTrace/iOSApp/Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 3f01ddc37dd202381f16f512 /* RouteTrace/iOSApp/Assets.xcassets */; };
 		3718d1708ccbade56a5d9c57 /* RouteTrace/iOSApp/LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 34f7fb4decf290b2aee46699 /* RouteTrace/iOSApp/LaunchScreen.storyboard */; };
+		3bba43b8ea96f069ca2f065a /* RouteTrace/WatchApp/AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = 3f12718be27d639fb6b06865 /* RouteTrace/WatchApp/AppIcon.icon */; };
 		30994bcdd922d91606724310 /* RouteTrace/WatchApp/Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 3412ef90e46b6b5b829b2069 /* RouteTrace/WatchApp/Assets.xcassets */; };
 		301ae4d865af7fc3f24c5e31 /* RouteTrace/Tests/Fixtures in Resources */ = {isa = PBXBuildFile; fileRef = 3bba35c8e4655f77b22000cb /* RouteTrace/Tests/Fixtures */; };
 		3971203d66ea5725fd2535e7 /* RouteTraceWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 310627d690813b27e020ce0b /* RouteTraceWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -112,6 +114,7 @@
 		3bba35c8e4655f77b22000cb /* RouteTrace/Tests/Fixtures */ = {isa = PBXFileReference; lastKnownFileType = folder; path = RouteTrace/Tests/Fixtures; sourceTree = "<group>"; };
 		3c5fdd52f5b7df67a30c66db /* RouteTrace/Tests/RouteTraceCoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteTrace/Tests/RouteTraceCoreTests.swift; sourceTree = "<group>"; };
 		360f70c4089adb5b3559b2a1 /* RouteTrace/Tests/RouteTraceSharedTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteTrace/Tests/RouteTraceSharedTests.swift; sourceTree = "<group>"; };
+		3f12718be27d639fb6b06865 /* RouteTrace/WatchApp/AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = RouteTrace/WatchApp/AppIcon.icon; sourceTree = "<group>"; };
 		3412ef90e46b6b5b829b2069 /* RouteTrace/WatchApp/Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = RouteTrace/WatchApp/Assets.xcassets; sourceTree = "<group>"; };
 		31dde3b3844f32fee721c4fd /* RouteTrace/WatchApp/Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = RouteTrace/WatchApp/Info.plist; sourceTree = "<group>"; };
 		33b402aaa67bb0fae1667e11 /* RouteTrace/WatchApp/RouteTraceWatch.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = RouteTrace/WatchApp/RouteTraceWatch.entitlements; sourceTree = "<group>"; };
@@ -149,6 +152,7 @@
 		3af8e3ae34ee918050705e59 /* RouteTrace/WatchWidgets/Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = RouteTrace/WatchWidgets/Info.plist; sourceTree = "<group>"; };
 		3906cc6b2d401954e95eb67c /* RouteTrace/WatchWidgets/RouteTraceWatchWidgets.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = RouteTrace/WatchWidgets/RouteTraceWatchWidgets.entitlements; sourceTree = "<group>"; };
 		31da9798106bfc19e26f024d /* RouteTrace/WatchWidgets/Sources/RouteTraceWatchWidgets/ActiveRouteWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteTrace/WatchWidgets/Sources/RouteTraceWatchWidgets/ActiveRouteWidget.swift; sourceTree = "<group>"; };
+		3a74a90bc722573fb16b0e19 /* RouteTrace/iOSApp/AppIcon.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = RouteTrace/iOSApp/AppIcon.icon; sourceTree = "<group>"; };
 		3f01ddc37dd202381f16f512 /* RouteTrace/iOSApp/Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = RouteTrace/iOSApp/Assets.xcassets; sourceTree = "<group>"; };
 		311700f9022f22573ffde8c0 /* RouteTrace/iOSApp/Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = RouteTrace/iOSApp/Info.plist; sourceTree = "<group>"; };
 		34f7fb4decf290b2aee46699 /* RouteTrace/iOSApp/LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = RouteTrace/iOSApp/LaunchScreen.storyboard; sourceTree = "<group>"; };
@@ -241,6 +245,7 @@
 				3034997930750110991c2784 /* RouteTrace/iOSApp/Sources/RouteTrace/Services/RouteWatchAutoTransfer.swift */,
 				311700f9022f22573ffde8c0 /* RouteTrace/iOSApp/Info.plist */,
 				3709be3b47196ffbb4314a36 /* RouteTrace/iOSApp/RouteTrace.entitlements */,
+				3a74a90bc722573fb16b0e19 /* RouteTrace/iOSApp/AppIcon.icon */,
 				3f01ddc37dd202381f16f512 /* RouteTrace/iOSApp/Assets.xcassets */,
 				34f7fb4decf290b2aee46699 /* RouteTrace/iOSApp/LaunchScreen.storyboard */,
 			);
@@ -283,6 +288,7 @@
 				3ed694a0018f06dbc122c54a /* RouteTrace/WatchApp/Sources/RouteTraceWatch/ViewModels/ActiveRouteViewModel.swift */,
 				31dde3b3844f32fee721c4fd /* RouteTrace/WatchApp/Info.plist */,
 				33b402aaa67bb0fae1667e11 /* RouteTrace/WatchApp/RouteTraceWatch.entitlements */,
+				3f12718be27d639fb6b06865 /* RouteTrace/WatchApp/AppIcon.icon */,
 				3412ef90e46b6b5b829b2069 /* RouteTrace/WatchApp/Assets.xcassets */,
 			);
 			name = Watch;
@@ -464,6 +470,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				3cb0372c98ce73fac6e9bd68 /* RouteTrace/iOSApp/AppIcon.icon in Resources */,
 				3b8ea933bafbcf276c8ddfc9 /* RouteTrace/iOSApp/Assets.xcassets in Resources */,
 				3718d1708ccbade56a5d9c57 /* RouteTrace/iOSApp/LaunchScreen.storyboard in Resources */,
 			);
@@ -473,6 +480,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				3bba43b8ea96f069ca2f065a /* RouteTrace/WatchApp/AppIcon.icon in Resources */,
 				30994bcdd922d91606724310 /* RouteTrace/WatchApp/Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
