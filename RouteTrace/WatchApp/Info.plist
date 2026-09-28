@@ -9,7 +9,7 @@
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>RouteTrace uses your location to navigate GPX routes and show live progress on the map.</string>
 	<key>WKCompanionAppBundleIdentifier</key>
-	<string>com.uwe.RouteTrace</string>
+	<string>com.routetrace.app</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>location</string>

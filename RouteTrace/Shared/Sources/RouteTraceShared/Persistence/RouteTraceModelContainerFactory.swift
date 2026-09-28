@@ -16,7 +16,7 @@ public enum RouteTraceCloudConstants {
 }
 
 public enum RouteTraceModelContainerFactory {
-    private static let logger = Logger(subsystem: "com.uwe.RouteTrace", category: "ModelContainer")
+    private static let logger = Logger(subsystem: "com.routetrace.app", category: "ModelContainer")
 
     public static func make() -> ModelContainer {
         let schema = Schema(RouteTraceSchema.models)
