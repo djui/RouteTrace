@@ -9,8 +9,9 @@ struct ActivitySummaryView: View {
     @Environment(WatchActivityStore.self) private var activityStore
 
     @State private var isSaving = false
+    @State private var showDiscardConfirmation = false
 
-    private static let contentHorizontalPadding: CGFloat = 16
+    private static let contentHorizontalPadding: CGFloat = 14
     private static let floatingSaveClearance: CGFloat = 72
 
     private var speedMode: SpeedDisplayMode {
@@ -28,42 +29,43 @@ struct ActivitySummaryView: View {
     var body: some View {
         ZStack(alignment: .bottom) {
             ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 10) {
                     Text(activityTitle)
                         .font(.headline)
-                        .lineLimit(2)
+                        .lineLimit(3)
 
-                    summaryRow("Elapsed", RouteFormatting.duration(viewModel.elapsedSeconds), "clock")
-                    summaryRow("Distance", RouteFormatting.distance(viewModel.recording.totalDistanceMeters), "ruler")
-                    summaryRow(
-                        speedMode.averageLabel,
-                        RouteFormatting.speedOrPace(viewModel.averageSpeedMetersPerSecond, mode: speedMode),
-                        "speedometer"
-                    )
-                    summaryRow("Elevation", RouteFormatting.elevation(viewModel.recording.elevationGainMeters), "arrow.up.right")
-                    summaryRow("Heart Rate", heartRateLabel, "heart.fill")
-                    summaryRow("Off Route", "\(viewModel.recording.offRouteEvents.count)", "location.slash")
+                    Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 10) {
+                        GridRow {
+                            summaryStat("Time", RouteFormatting.duration(viewModel.elapsedSeconds), tint: .yellow)
+                            summaryStat("Distance", RouteFormatting.distance(viewModel.gpsDistanceMeters))
+                        }
+                        GridRow {
+                            summaryStat(speedMode.averageLabel, RouteFormatting.speedOrPace(viewModel.averageSpeedMetersPerSecond, mode: speedMode))
+                            summaryStat("Climbed", RouteFormatting.elevation(viewModel.elevationGainMeters ?? 0))
+                        }
+                        GridRow {
+                            summaryStat("Avg Heart", viewModel.averageHeartRateBPM.map { "\(Int($0.rounded())) bpm" } ?? "—", tint: .red)
+                            summaryStat("Route", "\(Int((viewModel.progressFraction * 100).rounded()))%")
+                        }
+                    }
 
-                    if let route = viewModel.routePackage {
+                    if viewModel.routePackage != nil {
                         OverviewView(viewModel: viewModel, compact: true)
-                            .frame(height: 100)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                        Text(route.name)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .frame(height: 110)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     }
 
                     Button(role: .destructive) {
-                        viewModel.discardActivity()
+                        showDiscardConfirmation = true
                     } label: {
-                        Text("Discard")
+                        Label("Discard", systemImage: "trash")
                             .frame(maxWidth: .infinity)
                     }
                     .routeGlassButton(tint: .red)
                     .disabled(isSaving)
                 }
                 .padding(.horizontal, Self.contentHorizontalPadding)
-                .padding(.top, 16)
+                .padding(.top, 8)
                 .padding(.bottom, Self.floatingSaveClearance)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -74,9 +76,7 @@ struct ActivitySummaryView: View {
                 ProgressView()
                     .controlSize(.large)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-
-            if !isSaving {
+            } else {
                 saveButton
                     .padding(.horizontal, Self.contentHorizontalPadding)
                     .padding(.bottom, RouteAppearance.watchFloatingButtonBottomInset)
@@ -84,16 +84,26 @@ struct ActivitySummaryView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .ignoresSafeArea(edges: .bottom)
-        .navigationTitle("Finish")
+        .navigationTitle("Summary")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
-                RouteGlassIconButton(systemName: "xmark") {
+                // Back to the paused activity.
+                RouteGlassIconButton(systemName: "chevron.backward") {
                     viewModel.cancelSummary()
                 }
                 .disabled(isSaving)
+                .accessibilityLabel("Resume Activity")
             }
+        }
+        .confirmationDialog("Discard this activity?", isPresented: $showDiscardConfirmation, titleVisibility: .visible) {
+            Button("Discard", role: .destructive) {
+                viewModel.discardActivity()
+            }
+            Button("Keep", role: .cancel) {}
+        } message: {
+            Text("The route and time recorded won’t be saved, here or in Health.")
         }
     }
 
@@ -109,31 +119,26 @@ struct ActivitySummaryView: View {
                 isSaving = false
             }
         } label: {
-            Text("Save")
+            Label("Save", systemImage: "checkmark")
                 .font(.headline)
                 .frame(maxWidth: .infinity)
         }
         .routeGlassButton(prominent: true, tint: .green)
     }
 
-    private var heartRateLabel: String {
-        guard let bpm = viewModel.recording.averageHeartRateBPM else { return "—" }
-        return String(format: "%.0f bpm", bpm)
-    }
-
-    private func summaryRow(_ title: String, _ value: String, _ symbol: String) -> some View {
-        HStack {
-            Image(systemName: symbol)
-                .frame(width: 20)
+    private func summaryStat(_ title: String, _ value: String, tint: Color = .primary) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(value)
+                .font(.system(.title3, design: .rounded, weight: .semibold))
+                .foregroundStyle(tint)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+            Text(title)
+                .font(.caption2)
                 .foregroundStyle(.secondary)
-            VStack(alignment: .leading) {
-                Text(title)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                Text(value)
-                    .font(.body)
-            }
-            Spacer()
+                .lineLimit(1)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

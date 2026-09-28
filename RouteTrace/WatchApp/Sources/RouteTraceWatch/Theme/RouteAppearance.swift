@@ -61,6 +61,10 @@ enum RouteAppearance {
     static let routeOutlineWidth: CGFloat = 7
     static let routeStrokeWidth: CGFloat = 4.5
     static let routeOutlineColor = Color.black.opacity(0.55)
+    /// The planned route (as in the app icon).
+    static let routeColor = Color.blue
+    /// The recorded track.
+    static let trackColor = Color.green
 
     /// Top-leading controls — keep clear of large corner radius.
     static let watchCornerClearance: CGFloat = 12

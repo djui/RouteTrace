@@ -19,13 +19,14 @@ final class WatchCloudRouteSyncService {
 
         do {
             try RouteTracePaths.ensureDirectoriesExist()
+            let store = WatchRouteStore.shared
 
-            for entity in entities {
+            for entity in entities where !store.isDeletedOnWatch(entity.id) {
                 guard let package = try entity.decodedPackage() else { continue }
-                try materializeRouteIfNeeded(routeID: entity.id, package: package)
+                try materializeRouteIfNeeded(routeID: entity.id, package: package, routesRoot: store.routesRootURL)
             }
 
-            await WatchRouteStore.shared.reload()
+            await store.reload()
             lastSyncedAt = Date()
             lastSyncError = nil
         } catch {
@@ -33,17 +34,22 @@ final class WatchCloudRouteSyncService {
         }
     }
 
-    private func materializeRouteIfNeeded(routeID: UUID, package: RoutePackage) throws {
-        let routeDirectory = WatchRouteStore.shared.routesRootURL
-            .appendingPathComponent(routeID.uuidString, isDirectory: true)
+    private func materializeRouteIfNeeded(routeID: UUID, package: RoutePackage, routesRoot: URL) throws {
+        let routeDirectory = routesRoot.appendingPathComponent(routeID.uuidString, isDirectory: true)
         let routeJSON = routeDirectory.appendingPathComponent("route.json")
 
         if FileManager.default.fileExists(atPath: routeJSON.path),
-           let existing = try? RoutePackaging.loadRoutePackage(from: routeDirectory),
-           existing.hasSameWatchMaterializedContent(as: package) {
-            return
+           let existing = try? RoutePackaging.loadRoutePackage(from: routeDirectory) {
+            // A route delivered from the iPhone with its offline map stays as delivered; the iPhone
+            // re-sends it (tiles included) whenever it changes.
+            let hasLocalTiles = FileManager.default.fileExists(
+                atPath: routeDirectory.appendingPathComponent("tiles", isDirectory: true).path
+            )
+            if hasLocalTiles || existing.hasSameWatchMaterializedContent(as: package) {
+                return
+            }
         }
 
-        _ = try RoutePackaging.writeRoutePackage(package, to: WatchRouteStore.shared.routesRootURL)
+        _ = try RoutePackaging.writeRoutePackage(package, to: routesRoot)
     }
 }

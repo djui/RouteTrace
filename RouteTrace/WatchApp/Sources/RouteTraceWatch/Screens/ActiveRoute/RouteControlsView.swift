@@ -1,5 +1,6 @@
 import RouteTraceShared
 import SwiftUI
+import WatchKit
 
 struct RouteControlsView: View {
     @Bindable var viewModel: ActiveRouteViewModel
@@ -11,20 +12,28 @@ struct RouteControlsView: View {
         if isLuminanceReduced {
             ActiveRouteDimmedSummary(viewModel: viewModel)
         } else {
-            VStack(spacing: 12) {
-                Spacer(minLength: 8)
+            VStack(spacing: 10) {
+                Text(RouteFormatting.duration(viewModel.elapsedSeconds))
+                    .font(.system(.title3, design: .rounded, weight: .semibold))
+                    .foregroundStyle(viewModel.isPaused ? .orange : .yellow)
+                    .monospacedDigit()
+                    .padding(.top, 18)
 
-                Button {
-                    viewModel.togglePauseResume(preferences: preferences)
-                } label: {
-                    Label(
+                HStack(spacing: 10) {
+                    controlButton(
                         viewModel.isPaused ? "Resume" : "Pause",
-                        systemImage: viewModel.isPaused ? "play.fill" : "pause.fill"
-                    )
-                    .font(.headline)
-                    .frame(maxWidth: .infinity)
+                        systemImage: viewModel.isPaused ? "play.fill" : "pause.fill",
+                        tint: viewModel.isPaused ? .green : .orange
+                    ) {
+                        viewModel.togglePauseResume(preferences: preferences)
+                    }
+
+                    controlButton("Lock", systemImage: "drop.fill", tint: .cyan) {
+                        // Ignores taps from rain and sweat; turn the crown to unlock.
+                        WKInterfaceDevice.current().enableWaterLock()
+                    }
+                    .disabled(!viewModel.workoutService.isSessionActive)
                 }
-                .routeGlassButton(prominent: true, tint: viewModel.isPaused ? .green : .orange)
 
                 Button {
                     viewModel.prepareSummary(preferences: preferences)
@@ -35,12 +44,25 @@ struct RouteControlsView: View {
                 }
                 .routeGlassButton(prominent: true, tint: .red)
 
-                Spacer(minLength: 8)
+                Spacer(minLength: 0)
             }
             .padding(.horizontal, 12)
-            .padding(.top, 8)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .routeScreenBackground()
         }
+    }
+
+    private func controlButton(_ title: String, systemImage: String, tint: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                Image(systemName: systemImage)
+                    .font(.title3.weight(.semibold))
+                Text(title)
+                    .font(.caption2.weight(.semibold))
+            }
+            .frame(maxWidth: .infinity, minHeight: 52)
+        }
+        .routeGlassButton(tint: tint)
+        .buttonBorderShape(.roundedRectangle(radius: 16))
     }
 }

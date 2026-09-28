@@ -1,236 +1,176 @@
 import SwiftUI
 import SwiftData
-import UniformTypeIdentifiers
 import RouteTraceShared
 
+/// Confirms an import: shows the route on a map with its key numbers before saving.
 struct ImportRouteView: View {
-    @ObservedObject var routeStore: RouteStore
-    @ObservedObject var incomingGPX: IncomingGPXCoordinator
-    let initialFileURL: URL?
-
+    @EnvironmentObject private var routeStore: RouteStore
     @Environment(\.dismiss) private var dismiss
 
-    @State private var importService: RouteImportService?
-    @State private var settings: AppSettingsEntity?
+    let candidate: GPXImportCandidate
+    var onImported: (RouteEntity) -> Void
 
-    @State private var isImporterPresented = false
-    @State private var selectedFileURL: URL?
-    @State private var routeName = ""
-    @State private var selectedActivity: ActivityKind = .running
-    @State private var buildOfflinePack = false
+    @State private var name: String
+    @State private var activity: ActivityKind = .running
     @State private var reverseDirection = false
+    @State private var buildOfflineMap = false
+    @State private var preview: RoutePackage?
     @State private var isImporting = false
-    @State private var importProgress: OfflinePackBuildProgress?
     @State private var errorMessage: String?
-    @State private var navigationWarning: String?
+    @State private var didApplyDefaults = false
 
-    init(
-        routeStore: RouteStore,
-        incomingGPX: IncomingGPXCoordinator,
-        initialFileURL: URL? = nil
-    ) {
-        self.routeStore = routeStore
-        self.incomingGPX = incomingGPX
-        self.initialFileURL = initialFileURL
+    init(candidate: GPXImportCandidate, onImported: @escaping (RouteEntity) -> Void) {
+        self.candidate = candidate
+        self.onImported = onImported
+        _name = State(initialValue: candidate.suggestedName)
+    }
+
+    private struct PreviewKey: Hashable {
+        let activity: ActivityKind
+        let reverse: Bool
     }
 
     var body: some View {
         NavigationStack {
             Form {
-                Section("GPX File") {
-                    Button {
-                        isImporterPresented = true
-                    } label: {
-                        Label(
-                            selectedFileURL?.lastPathComponent ?? "Choose GPX File",
-                            systemImage: "doc.badge.plus"
-                        )
-                    }
-
-                    TextField("Route Name", text: $routeName)
-                        .textInputAutocapitalization(.words)
+                Section {
+                    previewHeader
+                        .listRowInsets(EdgeInsets())
                 }
 
-                Section("Activity") {
-                    Picker("Activity Type", selection: $selectedActivity) {
+                Section("Name") {
+                    TextField("Route Name", text: $name)
+                        .textInputAutocapitalization(.words)
+                        .submitLabel(.done)
+                }
+
+                Section {
+                    Picker(selection: $activity) {
                         ForEach(ActivityKind.allCases) { kind in
                             Label(kind.displayName, systemImage: kind.systemImage).tag(kind)
                         }
+                    } label: {
+                        Label("Activity", systemImage: activity.systemImage)
                     }
-                    .onChange(of: selectedActivity) { _, _ in
-                        Task { await previewNavigationWarning() }
-                    }
+                } footer: {
+                    Text("Off-route alerts after \(Int(activity.offRouteWarningMeters)) m. The offline map covers \(RouteFormatting.distance(activity.corridorBufferMeters)) on either side of the route.")
                 }
 
-                if let navigationWarning {
+                Section {
+                    Toggle(isOn: $reverseDirection) {
+                        Label("Reverse Direction", systemImage: "arrow.left.arrow.right")
+                    }
+                    Toggle(isOn: $buildOfflineMap) {
+                        Label("Download Offline Map", systemImage: "map")
+                    }
+                } footer: {
+                    Text("The offline map is prepared on this iPhone in the background and sent to your Apple Watch, so the map works without a connection.")
+                }
+
+                if let warning = preview?.navigationWarning {
                     Section {
-                        Label(navigationWarning, systemImage: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.orange)
+                        Label(warning, systemImage: "exclamationmark.triangle.fill")
                             .font(.subheadline)
+                            .foregroundStyle(.orange)
                     }
-                }
-
-                Section("Options") {
-                    Toggle("Reverse Direction", isOn: $reverseDirection)
-                        .onChange(of: reverseDirection) { _, _ in
-                            Task { await previewNavigationWarning() }
-                        }
-                    Toggle("Build Offline Map Pack", isOn: $buildOfflinePack)
                 }
 
                 if let errorMessage {
                     Section {
-                        Text(errorMessage)
+                        Label(errorMessage, systemImage: "xmark.octagon.fill")
                             .foregroundStyle(.red)
                     }
                 }
             }
             .navigationTitle("Import Route")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        incomingGPX.clearPending()
+                    Button("Cancel", role: .cancel) {
                         dismiss()
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        Task { await saveRoute() }
+                    if isImporting {
+                        ProgressView()
+                    } else {
+                        Button("Import") {
+                            Task { await importRoute() }
+                        }
+                        .fontWeight(.semibold)
+                        .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || preview == nil)
                     }
-                    .disabled(selectedFileURL == nil || isImporting)
                 }
             }
-            .fileImporter(
-                isPresented: $isImporterPresented,
-                allowedContentTypes: [GPXDocumentSupport.gpxType, .xml],
-                allowsMultipleSelection: false
-            ) { result in
-                switch result {
-                case .success(let urls):
-                    guard let url = urls.first else { return }
-                    applySelectedFile(url)
-                case .failure(let error):
-                    errorMessage = error.localizedDescription
-                }
+            .interactiveDismissDisabled(isImporting)
+            .task {
+                applyDefaultsIfNeeded()
             }
-            .overlay {
-                if isImporting {
-                    importProgressOverlay
-                }
+            .task(id: PreviewKey(activity: activity, reverse: reverseDirection)) {
+                preview = await candidate.previewPackage(activity: activity, reverseDirection: reverseDirection)
             }
-            .onAppear {
-                configureImport()
-            }
-        }
-    }
-
-    private func configureImport() {
-        if importService == nil {
-            importService = RouteImportService(routeStore: routeStore)
-        }
-        if settings == nil {
-            settings = try? routeStore.loadSettings()
-            if let settings {
-                selectedActivity = settings.defaultActivityKind
-                buildOfflinePack = settings.buildOfflinePacksByDefault
-            }
-        }
-        if let initialFileURL, selectedFileURL == nil {
-            applySelectedFile(initialFileURL)
-        }
-    }
-
-    private func applySelectedFile(_ url: URL) {
-        selectedFileURL = url
-        if routeName.isEmpty {
-            routeName = url.deletingPathExtension().lastPathComponent
-        }
-        Task { await previewNavigationWarning() }
-    }
-
-    @MainActor
-    private func previewNavigationWarning() async {
-        navigationWarning = nil
-        guard let url = selectedFileURL else { return }
-
-        do {
-            let accessed = url.startAccessingSecurityScopedResource()
-            defer {
-                if accessed { url.stopAccessingSecurityScopedResource() }
-            }
-
-            let data = try Data(contentsOf: url)
-            let parsed = try GPXParser().parse(data: data)
-            let package = RouteProcessor().makeRoutePackage(
-                from: parsed,
-                sourceFileName: url.lastPathComponent,
-                activityHint: selectedActivity,
-                customName: routeName.nilIfEmpty,
-                reverseDirection: reverseDirection
-            )
-            navigationWarning = package.navigationWarning
-        } catch {
-            navigationWarning = nil
-        }
-    }
-
-    @MainActor
-    private func saveRoute() async {
-        guard let url = selectedFileURL else { return }
-        isImporting = true
-        importProgress = nil
-        errorMessage = nil
-        defer {
-            isImporting = false
-            importProgress = nil
-        }
-
-        do {
-            let accessed = url.startAccessingSecurityScopedResource()
-            defer {
-                if accessed { url.stopAccessingSecurityScopedResource() }
-            }
-
-            let data = try Data(contentsOf: url)
-            _ = try await importService?.importGPX(
-                data: data,
-                fileName: url.lastPathComponent,
-                customName: routeName,
-                activityHint: selectedActivity,
-                buildOfflinePack: buildOfflinePack,
-                reverseDirection: reverseDirection,
-                onOfflineBuildProgress: { progress in
-                    importProgress = progress
-                }
-            )
-            incomingGPX.clearPending()
-            dismiss()
-        } catch {
-            errorMessage = error.localizedDescription
         }
     }
 
     @ViewBuilder
-    private var importProgressOverlay: some View {
-        VStack(spacing: 10) {
-            if let importProgress {
-                Text("Building offline map…")
-                    .font(.subheadline.weight(.semibold))
-                ProgressView(value: importProgress.fractionComplete)
-                Text(importProgress.statusText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            } else {
-                ProgressView("Importing route…")
+    private var previewHeader: some View {
+        VStack(spacing: 0) {
+            ZStack {
+                if let preview {
+                    RouteMapPreview(routePoints: preview.route)
+                        .id(reverseDirection)
+                } else {
+                    Rectangle()
+                        .fill(.quaternary)
+                        .overlay { ProgressView() }
+                }
             }
-        }
-        .padding()
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
-    }
-}
+            .frame(height: 230)
 
-private extension String {
-    var nilIfEmpty: String? {
-        isEmpty ? nil : self
+            HStack(spacing: 12) {
+                HeadlineStat(
+                    title: "Distance",
+                    value: preview.map { RouteFormatting.distance($0.distanceMeters) } ?? "—"
+                )
+                HeadlineStat(
+                    title: "Ascent",
+                    value: RouteFormatting.elevation(preview?.elevationGainMeters)
+                )
+                HeadlineStat(
+                    title: "Descent",
+                    value: RouteFormatting.elevation(preview?.elevationLossMeters)
+                )
+            }
+            .padding(16)
+        }
+    }
+
+    private func applyDefaultsIfNeeded() {
+        guard !didApplyDefaults else { return }
+        didApplyDefaults = true
+        if let settings = try? routeStore.loadSettings() {
+            activity = settings.defaultActivityKind
+            buildOfflineMap = settings.buildOfflinePacksByDefault
+        }
+    }
+
+    private func importRoute() async {
+        isImporting = true
+        errorMessage = nil
+        defer { isImporting = false }
+
+        do {
+            let entity = try await RouteImportService(routeStore: routeStore).importRoute(
+                candidate,
+                name: name,
+                activityHint: activity,
+                reverseDirection: reverseDirection,
+                buildOfflinePack: buildOfflineMap
+            )
+            onImported(entity)
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 }

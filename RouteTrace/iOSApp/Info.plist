@@ -29,11 +29,8 @@
 	<string>RouteTrace saves completed route workouts to the Health app.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>RouteTrace uses your location to preview routes and display imported GPX tracks on the map.</string>
-	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>RouteTrace may use background location to keep route navigation accurate during activities started on Apple Watch.</string>
 	<key>UIBackgroundModes</key>
 	<array>
-		<string>location</string>
 		<string>remote-notification</string>
 	</array>
 	<key>UILaunchScreen</key>

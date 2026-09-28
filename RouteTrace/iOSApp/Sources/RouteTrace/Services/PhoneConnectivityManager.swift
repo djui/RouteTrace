@@ -1,6 +1,7 @@
 #if canImport(WatchConnectivity)
 import Combine
 import Foundation
+import os
 import SwiftData
 import WatchConnectivity
 import RouteTraceShared
@@ -15,16 +16,23 @@ private struct WatchReplyHandler: @unchecked Sendable {
 
 private enum IncomingWatchMessage: Sendable {
     case routeInstalled(routeID: UUID, routeName: String)
+    case routeRemoved(routeID: UUID)
     case activityRecording(Data)
     case unsupported
 }
 
 private nonisolated func parseIncomingWatchMessage(_ message: [String: Any]) -> IncomingWatchMessage {
-    if message["type"] as? String == "routeInstalled",
-       let routeIDString = message["routeId"] as? String,
+    let type = message["type"] as? String
+    if let routeIDString = message["routeId"] as? String,
        let routeID = UUID(uuidString: routeIDString) {
-        let routeName = message["name"] as? String ?? "Route"
-        return .routeInstalled(routeID: routeID, routeName: routeName)
+        switch type {
+        case WatchMessageType.routeInstalled:
+            return .routeInstalled(routeID: routeID, routeName: message["name"] as? String ?? "Route")
+        case WatchMessageType.routeRemoved:
+            return .routeRemoved(routeID: routeID)
+        default:
+            break
+        }
     }
 
     if let payload = message["payload"] as? Data {
@@ -32,6 +40,19 @@ private nonisolated func parseIncomingWatchMessage(_ message: [String: Any]) -> 
     }
 
     return .unsupported
+}
+
+/// Something worth telling the user about, shown as a transient banner rather than an alert.
+struct WatchTransferEvent: Identifiable, Equatable {
+    enum Kind: Equatable {
+        case installed
+        case activityReceived
+        case failed
+    }
+
+    let id = UUID()
+    let kind: Kind
+    let message: String
 }
 
 @MainActor
@@ -59,18 +80,21 @@ final class PhoneConnectivityManager: NSObject, ObservableObject {
         }
     }
 
+    private nonisolated static let logger = Logger(subsystem: "com.uwe.RouteTrace", category: "WatchConnectivity")
+
     private let context: ModelContext
     private let routeStore: RouteStore
     private let session: WCSession?
-    private var activeTransferRouteIDs: Set<UUID> = []
+    /// The current transfer per route. A newer request (e.g. the route plus its freshly built
+    /// offline map) cancels and replaces an older one that is still queued.
+    private var inFlightTransfers: [UUID: WCSessionFileTransfer] = [:]
     private var inFlightTransferFiles: [UUID: URL] = [:]
 
     @Published private(set) var isActivated = false
     @Published private(set) var isWatchReachable = false
     @Published private(set) var isWatchPaired = false
     @Published private(set) var isWatchAppInstalled = false
-    @Published private(set) var lastTransferError: String?
-    @Published private(set) var lastTransferSuccess: String?
+    @Published private(set) var lastEvent: WatchTransferEvent?
 
     var onSessionActivated: (() -> Void)?
 
@@ -94,12 +118,12 @@ final class PhoneConnectivityManager: NSObject, ObservableObject {
             return "No Apple Watch paired"
         }
         if !isWatchAppInstalled {
-            return "Install RouteTrace on your Watch"
+            return "RouteTrace isn’t installed on your Apple Watch"
         }
         if isWatchReachable {
-            return "Apple Watch connected"
+            return "Connected"
         }
-        return "Apple Watch will receive the route in the background"
+        return "Routes are delivered in the background"
     }
 
     func activate() {
@@ -118,20 +142,17 @@ final class PhoneConnectivityManager: NSObject, ObservableObject {
         isActivated = session.activationState == .activated
         isWatchPaired = session.isPaired
         isWatchReachable = session.isReachable
-        #if os(iOS)
         isWatchAppInstalled = session.isWatchAppInstalled
-        #else
-        isWatchAppInstalled = true
-        #endif
     }
 
     func syncSettingsToWatch(batteryMode: BatteryMode) {
-        guard let session, session.activationState == .activated else { return }
+        // Without a paired watch this fails by design; that is not something to alert about.
+        guard let session, session.activationState == .activated, canTransferToWatch else { return }
         let payload = SettingsSyncPayload(batteryMode: batteryMode)
         do {
             try session.updateApplicationContext(payload.dictionaryRepresentation)
         } catch {
-            lastTransferError = error.localizedDescription
+            Self.logger.error("Settings sync failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -140,7 +161,6 @@ final class PhoneConnectivityManager: NSObject, ObservableObject {
         refreshSessionState()
         guard isWatchPaired else { throw ConnectivityError.watchNotPaired }
         guard isWatchAppInstalled else { throw ConnectivityError.watchAppNotInstalled }
-        guard !activeTransferRouteIDs.contains(routeID) else { return }
 
         guard let entity = try routeStore.fetchRoute(id: routeID) else {
             throw ConnectivityError.routeNotFound
@@ -149,33 +169,45 @@ final class PhoneConnectivityManager: NSObject, ObservableObject {
         let package = try routeStore.loadRoutePackage(for: entity)
         let archiveURL = try routeStore.ensureRoutepackArchive(for: entity)
         let transferURL = try WCSessionFileInbox.copyToTemporaryURL(from: archiveURL, prefix: "watch-transfer")
-
         let metadata = RouteTransferMetadata(routePackage: package).dictionaryRepresentation
-        lastTransferError = nil
-        lastTransferSuccess = nil
 
-        do {
-            try routeStore.updateTransferState(for: routeID, state: .queued)
-            activeTransferRouteIDs.insert(routeID)
-            inFlightTransferFiles[routeID] = transferURL
-            session.transferFile(transferURL, metadata: metadata)
-            try routeStore.updateTransferState(for: routeID, state: .transferring)
-            lastTransferSuccess = "Route queued for Apple Watch."
-        } catch {
-            activeTransferRouteIDs.remove(routeID)
-            inFlightTransferFiles.removeValue(forKey: routeID)
-            try? FileManager.default.removeItem(at: transferURL)
-            throw error
+        cancelInFlightTransfer(for: routeID)
+        inFlightTransferFiles[routeID] = transferURL
+        inFlightTransfers[routeID] = session.transferFile(transferURL, metadata: metadata)
+        try routeStore.updateTransferState(for: routeID, state: .transferring)
+    }
+
+    /// Tells the watch to drop a route deleted on this iPhone. Queued until the watch app runs.
+    func notifyRouteDeleted(_ routeID: UUID) {
+        cancelInFlightTransfer(for: routeID)
+        guard let session, session.activationState == .activated, canTransferToWatch else { return }
+        session.transferUserInfo([
+            "type": WatchMessageType.routeDeleted,
+            "routeId": routeID.uuidString
+        ])
+    }
+
+    private func cancelInFlightTransfer(for routeID: UUID) {
+        if let transfer = inFlightTransfers.removeValue(forKey: routeID), transfer.isTransferring {
+            transfer.cancel()
+        }
+        if let file = inFlightTransferFiles.removeValue(forKey: routeID) {
+            try? FileManager.default.removeItem(at: file)
         }
     }
 
     private func receiveActivityData(_ data: Data) -> Bool {
         do {
             let recording = try RouteTracePayloadCoding.decode(ActivityRecording.self, from: data)
+            let isNew = (try? routeStore.fetchActivity(id: recording.id)) == nil
             _ = try routeStore.saveActivity(recording)
+            if isNew {
+                lastEvent = WatchTransferEvent(kind: .activityReceived, message: "\(recording.displayTitle) synced from Apple Watch")
+            }
             return true
         } catch {
-            lastTransferError = error.localizedDescription
+            Self.logger.error("Failed to save activity from watch: \(error.localizedDescription, privacy: .public)")
+            lastEvent = WatchTransferEvent(kind: .failed, message: "Couldn’t save an activity from Apple Watch.")
             return false
         }
     }
@@ -183,10 +215,9 @@ final class PhoneConnectivityManager: NSObject, ObservableObject {
     private func handleRouteInstalledAck(routeID: UUID, routeName: String) {
         do {
             try routeStore.updateTransferState(for: routeID, state: .installed)
-            lastTransferSuccess = "\"\(routeName)\" is now on your Apple Watch."
-            lastTransferError = nil
+            lastEvent = WatchTransferEvent(kind: .installed, message: "\(routeName) is on your Apple Watch")
         } catch {
-            lastTransferError = error.localizedDescription
+            Self.logger.error("Failed to record install ack: \(error.localizedDescription, privacy: .public)")
         }
     }
 
@@ -194,6 +225,10 @@ final class PhoneConnectivityManager: NSObject, ObservableObject {
         switch message {
         case .routeInstalled(let routeID, let routeName):
             handleRouteInstalledAck(routeID: routeID, routeName: routeName)
+            return true
+        case .routeRemoved(let routeID):
+            // Deleted on the watch: don't auto-send it back, but keep it one tap away.
+            try? routeStore.updateTransferState(for: routeID, state: .removedFromWatch)
             return true
         case .activityRecording(let payload):
             return receiveActivityData(payload)
@@ -203,32 +238,34 @@ final class PhoneConnectivityManager: NSObject, ObservableObject {
     }
 
     private func handleReceivedFile(url: URL, type: String?) {
+        defer { try? FileManager.default.removeItem(at: url) }
         switch type {
-        case "activityRecording":
+        case WatchMessageType.activityRecording:
             guard let data = try? Data(contentsOf: url) else { return }
             _ = receiveActivityData(data)
-            try? FileManager.default.removeItem(at: url)
         default:
             break
         }
     }
 
-    private func handleTransferCompletion(for routeID: UUID, error: Error?) {
-        activeTransferRouteIDs.remove(routeID)
+    private func handleTransferCompletion(for routeID: UUID, transfer: WCSessionFileTransfer, error: Error?) {
+        // Ignore completions of transfers that were superseded by a newer one.
+        guard inFlightTransfers[routeID] === transfer else { return }
+        inFlightTransfers.removeValue(forKey: routeID)
         if let transferURL = inFlightTransferFiles.removeValue(forKey: routeID) {
             try? FileManager.default.removeItem(at: transferURL)
         }
 
-        do {
-            if let error {
-                lastTransferError = error.localizedDescription
-                try routeStore.updateTransferState(for: routeID, state: .failed)
-            }
-            // Successful delivery to the watch transfer queue; final "installed"
-            // state is set when the watch acknowledges installation.
-        } catch {
-            lastTransferError = error.localizedDescription
+        guard let error else {
+            // Delivered to the watch's queue; "installed" follows once the watch acknowledges.
+            return
         }
+        if (error as? WCError)?.code == .transferTimedOut || (error as NSError).code == NSUserCancelledError {
+            Self.logger.info("Route transfer cancelled or timed out: \(error.localizedDescription, privacy: .public)")
+        }
+        try? routeStore.updateTransferState(for: routeID, state: .failed)
+        let name = (try? routeStore.fetchRoute(id: routeID))?.name ?? "Route"
+        lastEvent = WatchTransferEvent(kind: .failed, message: "Couldn’t send \(name) to Apple Watch")
     }
 }
 
@@ -245,12 +282,11 @@ extension PhoneConnectivityManager: WCSessionDelegate {
                 onSessionActivated?()
             }
             if let error {
-                lastTransferError = error.localizedDescription
+                Self.logger.error("WCSession activation failed: \(error.localizedDescription, privacy: .public)")
             }
         }
     }
 
-    #if os(iOS)
     nonisolated func sessionDidBecomeInactive(_ session: WCSession) {}
 
     nonisolated func sessionDidDeactivate(_ session: WCSession) {
@@ -262,7 +298,17 @@ extension PhoneConnectivityManager: WCSessionDelegate {
             refreshSessionState()
         }
     }
-    #endif
+
+    nonisolated func sessionWatchStateDidChange(_ session: WCSession) {
+        Task { @MainActor in
+            let wasTransferable = canTransferToWatch
+            refreshSessionState()
+            // The watch app was just installed (or a watch paired): deliver pending routes.
+            if !wasTransferable, canTransferToWatch {
+                onSessionActivated?()
+            }
+        }
+    }
 
     nonisolated func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
         let incoming = parseIncomingWatchMessage(message)
@@ -293,16 +339,9 @@ extension PhoneConnectivityManager: WCSessionDelegate {
 
     nonisolated func session(_ session: WCSession, didReceive file: WCSessionFile) {
         let type = file.metadata?["type"] as? String
-        let copiedURL: URL?
-        do {
-            copiedURL = try WCSessionFileInbox.copyToTemporaryURL(from: file.fileURL, prefix: "phone-inbox")
-        } catch {
-            copiedURL = nil
-        }
-        guard let copiedURL else {
-            Task { @MainActor in
-                lastTransferError = "Failed to copy incoming file from Watch."
-            }
+        // WCSession deletes the file when this method returns, so copy it synchronously.
+        guard let copiedURL = try? WCSessionFileInbox.copyToTemporaryURL(from: file.fileURL, prefix: "phone-inbox") else {
+            Self.logger.error("Failed to copy incoming file from watch")
             return
         }
         Task { @MainActor in
@@ -317,16 +356,24 @@ extension PhoneConnectivityManager: WCSessionDelegate {
     ) {
         let metadata = fileTransfer.file.metadata ?? [:]
         guard
-            metadata["type"] as? String == "routePackage",
+            metadata["type"] as? String == WatchMessageType.routePackage,
             let routeIDString = metadata["routeId"] as? String,
             let routeID = UUID(uuidString: routeIDString)
         else {
             return
         }
 
+        let transfer = UncheckedSendable(fileTransfer)
         Task { @MainActor in
-            handleTransferCompletion(for: routeID, error: error)
+            handleTransferCompletion(for: routeID, transfer: transfer.value, error: error)
         }
     }
+}
+
+/// Carries a non-Sendable WatchConnectivity object across to the main actor, where it is only
+/// compared by identity.
+private struct UncheckedSendable<Value>: @unchecked Sendable {
+    let value: Value
+    init(_ value: Value) { self.value = value }
 }
 #endif

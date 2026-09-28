@@ -29,28 +29,34 @@ struct RouteDetailView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
                     RoutePreviewMap(route: route)
-                        .frame(height: 100)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                        .frame(height: 112)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
 
-                    sectionHeader("Route")
-                    detailRow("Distance", RouteFormatting.distance(route.distanceMeters))
-                    detailRow("Elevation", RouteFormatting.elevation(route.elevationGainMeters))
-                    detailRow("Offline Map", offlineLabel)
+                    Grid(alignment: .leading, horizontalSpacing: 12) {
+                        GridRow {
+                            stat("Distance", RouteFormatting.distance(route.distanceMeters))
+                            stat("Ascent", RouteFormatting.elevation(route.elevationGainMeters))
+                        }
+                    }
 
-                    sectionHeader("Activity")
-                    Picker("Type", selection: $selectedActivityKind) {
+                    Label(offlineLabel, systemImage: route.offlineStatus == .missing ? "wifi" : "map.fill")
+                        .font(.caption)
+                        .foregroundStyle(route.offlineStatus == .missing ? Color.secondary : Color.blue)
+
+                    Picker(selection: $selectedActivityKind) {
                         ForEach(ActivityKind.allCases) { kind in
                             Label(kind.displayName, systemImage: kind.systemImage).tag(kind)
                         }
+                    } label: {
+                        Label("Activity", systemImage: selectedActivityKind.systemImage)
                     }
                     .pickerStyle(.navigationLink)
 
-                    sectionHeader("Manage")
                     if route.offlineStatus != .missing {
                         Button(role: .destructive) {
                             showDeleteMapConfirm = true
                         } label: {
-                            Text("Delete Offline Map")
+                            Label("Delete Offline Map", systemImage: "map")
                                 .frame(maxWidth: .infinity)
                         }
                         .routeGlassButton(tint: .red)
@@ -59,7 +65,7 @@ struct RouteDetailView: View {
                     Button(role: .destructive) {
                         showDeleteConfirm = true
                     } label: {
-                        Text("Delete Route")
+                        Label("Remove Route", systemImage: "trash")
                             .frame(maxWidth: .infinity)
                     }
                     .routeGlassButton(tint: .red)
@@ -90,8 +96,8 @@ struct RouteDetailView: View {
         .onChange(of: selectedActivityKind) { _, kind in
             activeViewModel.setWarmupActivityKind(kind)
         }
-        .confirmationDialog("Delete this route?", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
-            Button("Delete", role: .destructive) {
+        .confirmationDialog("Remove this route?", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
+            Button("Remove", role: .destructive) {
                 Task {
                     try? await routeStore.deleteRoute(id: route.id)
                     dismiss()
@@ -113,10 +119,24 @@ struct RouteDetailView: View {
 
     private var offlineLabel: String {
         switch route.offlineStatus {
-        case .ready: "Ready"
-        case .partial: "Partial"
-        case .missing: "Not available"
+        case .ready: "Offline map on watch"
+        case .partial: "Partial offline map"
+        case .missing: "Map needs a connection"
         }
+    }
+
+    private func stat(_ title: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(value)
+                .font(.system(.title3, design: .rounded, weight: .semibold))
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder
@@ -166,22 +186,6 @@ struct RouteDetailView: View {
             return .green
         default:
             return .orange
-        }
-    }
-
-    private func sectionHeader(_ title: String) -> some View {
-        Text(title)
-            .font(.headline)
-            .padding(.top, 4)
-    }
-
-    private func detailRow(_ title: String, _ value: String) -> some View {
-        HStack {
-            Text(title)
-                .foregroundStyle(.secondary)
-            Spacer()
-            Text(value)
-                .multilineTextAlignment(.trailing)
         }
     }
 

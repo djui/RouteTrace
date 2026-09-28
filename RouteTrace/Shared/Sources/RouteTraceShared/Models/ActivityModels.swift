@@ -114,9 +114,15 @@ public struct ActivityRecording: Codable, Sendable, Identifiable {
         self.plannedRoutePoints = plannedRoutePoints
     }
 
-    /// Planned route points for map overlay: live route if available, else embedded snapshot.
+    /// Planned route points for the map overlay.
+    ///
+    /// Prefers the snapshot embedded when the activity was recorded: the live route may have been
+    /// reversed or re-processed since. Falls back to the live route for older recordings.
     public func resolvedPlannedRoutePoints(liveRoute: RoutePackage?) -> [RoutePoint] {
-        liveRoute?.route ?? plannedRoutePoints ?? []
+        if let snapshot = plannedRoutePoints, snapshot.count >= 2 {
+            return snapshot
+        }
+        return liveRoute?.route ?? plannedRoutePoints ?? []
     }
 
     public func renamed(to newTitle: String) -> ActivityRecording {

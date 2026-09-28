@@ -15,6 +15,10 @@ final class WatchConnectivityManager: NSObject {
 
     private let session: WCSession? = WCSession.isSupported() ? WCSession.default : nil
 
+    /// Activities not yet delivered to the iPhone. WatchConnectivity retries queued transfers,
+    /// but a transfer that fails (or whose temp file was purged) would otherwise be lost.
+    private static let pendingActivitiesKey = "watch.pendingActivityUploads"
+
     private override init() {
         super.init()
     }
@@ -30,37 +34,44 @@ final class WatchConnectivityManager: NSObject {
             if let batteryMode = Self.parseBatteryMode(from: session.receivedApplicationContext) {
                 applySyncedBatteryMode(batteryMode)
             }
+            resendPendingActivities()
         }
-    }
-
-    func applyReceivedApplicationContext(_ context: [String: Any]) {
-        guard let batteryMode = Self.parseBatteryMode(from: context) else { return }
-        applySyncedBatteryMode(batteryMode)
     }
 
     private func applySyncedBatteryMode(_ batteryMode: BatteryMode) {
         WatchPreferences.shared.applySyncedBatteryMode(batteryMode)
-        lastSyncMessage = "Synced battery mode from iPhone."
     }
 
     private nonisolated static func parseBatteryMode(from context: [String: Any]) -> BatteryMode? {
         SettingsSyncPayload(dictionary: context)?.batteryMode
     }
 
+    // MARK: - Activities
+
     func sendActivityRecording(_ recording: ActivityRecording) async {
-        guard let session, session.activationState == .activated else {
-            lastSyncMessage = "Watch Connectivity unavailable."
-            return
+        markActivityPending(recording.id)
+        transfer(recording)
+    }
+
+    private func transfer(_ recording: ActivityRecording) {
+        guard let session, session.activationState == .activated else { return }
+
+        let alreadyQueued = session.outstandingFileTransfers.contains {
+            $0.file.metadata?["activityId"] as? String == recording.id.uuidString
         }
+        guard !alreadyQueued else { return }
 
         do {
             let data = try RouteTracePayloadCoding.encode(recording)
-            let fileURL = FileManager.default.temporaryDirectory
-                .appendingPathComponent("activity-\(recording.id.uuidString).json")
+            // Application Support survives until delivery; tmp may be purged by the system.
+            let directory = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+                .appendingPathComponent("Outbox", isDirectory: true)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let fileURL = directory.appendingPathComponent("activity-\(recording.id.uuidString).json")
             try data.write(to: fileURL, options: .atomic)
 
             let metadata: [String: String] = [
-                "type": "activityRecording",
+                "type": WatchMessageType.activityRecording,
                 "activityId": recording.id.uuidString,
                 "routeId": recording.routeId.uuidString,
                 "routeName": recording.routeName,
@@ -74,35 +85,74 @@ final class WatchConnectivityManager: NSObject {
         }
     }
 
-    private func acknowledgeRouteInstalled(package: RoutePackage) {
-        guard let session, session.activationState == .activated else { return }
-
-        let payload: [String: Any] = [
-            "type": "routeInstalled",
-            "routeId": package.id.uuidString,
-            "name": package.name,
-            "schemaVersion": RouteTransferMetadata.schemaVersion
-        ]
-
-        if session.isReachable {
-            session.sendMessage(payload, replyHandler: nil) { _ in
-                Task { @MainActor in
-                    self.transferUserInfoAcknowledgement(payload)
-                }
-            }
-        } else {
-            transferUserInfoAcknowledgement(payload)
+    private func resendPendingActivities() {
+        let pending = Self.pendingActivityIDs
+        guard !pending.isEmpty else { return }
+        for recording in WatchActivityStore.shared.activities where pending.contains(recording.id) {
+            transfer(recording)
         }
     }
 
-    private func transferUserInfoAcknowledgement(_ payload: [String: Any]) {
-        _ = session?.transferUserInfo(payload)
+    private func markActivityPending(_ id: UUID) {
+        var pending = Self.pendingActivityIDs
+        pending.insert(id)
+        Self.pendingActivityIDs = pending
+    }
+
+    private func markActivityDelivered(_ id: UUID) {
+        var pending = Self.pendingActivityIDs
+        pending.remove(id)
+        Self.pendingActivityIDs = pending
+    }
+
+    private static var pendingActivityIDs: Set<UUID> {
+        get {
+            let strings = UserDefaults.standard.stringArray(forKey: pendingActivitiesKey) ?? []
+            return Set(strings.compactMap(UUID.init(uuidString:)))
+        }
+        set {
+            UserDefaults.standard.set(newValue.map(\.uuidString), forKey: pendingActivitiesKey)
+        }
+    }
+
+    // MARK: - Routes
+
+    private func acknowledgeRouteInstalled(package: RoutePackage) {
+        send([
+            "type": WatchMessageType.routeInstalled,
+            "routeId": package.id.uuidString,
+            "name": package.name,
+            "schemaVersion": RouteTransferMetadata.schemaVersion
+        ])
+    }
+
+    /// Lets the iPhone show the route as no longer on the watch (and not re-send it on its own).
+    func notifyRouteRemoved(_ routeID: UUID) {
+        send([
+            "type": WatchMessageType.routeRemoved,
+            "routeId": routeID.uuidString
+        ])
+    }
+
+    /// Sends immediately when the iPhone is reachable, otherwise queues for guaranteed delivery.
+    private func send(_ payload: [String: Any]) {
+        guard let session, session.activationState == .activated else { return }
+        let userInfo = UncheckedPayload(payload)
+        if session.isReachable {
+            session.sendMessage(payload, replyHandler: nil) { _ in
+                Task { @MainActor in
+                    _ = self.session?.transferUserInfo(userInfo.value)
+                }
+            }
+        } else {
+            session.transferUserInfo(payload)
+        }
     }
 
     private func handleIncomingFile(url: URL, type: String?) async {
-        let resolvedType = type ?? "routePackage"
+        let resolvedType = type ?? WatchMessageType.routePackage
         switch resolvedType {
-        case "routePackage", RoutePackaging.routepackExtension:
+        case WatchMessageType.routePackage, RoutePackaging.routepackExtension:
             do {
                 let package = try await WatchRouteStore.shared.installRoutePackage(from: url)
                 acknowledgeRouteInstalled(package: package)
@@ -114,6 +164,13 @@ final class WatchConnectivityManager: NSObject {
         }
 
         try? FileManager.default.removeItem(at: url)
+    }
+
+    private func handleUserInfo(_ userInfo: [String: Any]) async {
+        guard userInfo["type"] as? String == WatchMessageType.routeDeleted,
+              let idString = userInfo["routeId"] as? String,
+              let routeID = UUID(uuidString: idString) else { return }
+        try? await WatchRouteStore.shared.deleteRoute(id: routeID, origin: .iPhone)
     }
 }
 
@@ -133,10 +190,9 @@ extension WatchConnectivityManager: WCSessionDelegate {
             if let batteryMode {
                 applySyncedBatteryMode(batteryMode)
             }
-            if let message {
-                lastSyncMessage = message
-            } else if !activated {
-                lastSyncMessage = nil
+            lastSyncMessage = message
+            if activated {
+                resendPendingActivities()
             }
         }
     }
@@ -157,15 +213,17 @@ extension WatchConnectivityManager: WCSessionDelegate {
         }
     }
 
+    nonisolated func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any]) {
+        let payload = UncheckedPayload(userInfo)
+        Task { @MainActor in
+            await handleUserInfo(payload.value)
+        }
+    }
+
     nonisolated func session(_ session: WCSession, didReceive file: WCSessionFile) {
         let type = file.metadata?["type"] as? String
-        let copiedURL: URL?
-        do {
-            copiedURL = try WCSessionFileInbox.copyToTemporaryURL(from: file.fileURL, prefix: "watch-inbox")
-        } catch {
-            copiedURL = nil
-        }
-        guard let copiedURL else {
+        // WCSession deletes the file when this method returns, so copy it synchronously.
+        guard let copiedURL = try? WCSessionFileInbox.copyToTemporaryURL(from: file.fileURL, prefix: "watch-inbox") else {
             Task { @MainActor in
                 lastSyncMessage = "Failed to copy incoming file."
             }
@@ -177,11 +235,25 @@ extension WatchConnectivityManager: WCSessionDelegate {
     }
 
     nonisolated func session(_ session: WCSession, didFinish fileTransfer: WCSessionFileTransfer, error: Error?) {
+        let metadata = fileTransfer.file.metadata ?? [:]
+        let activityID = (metadata["activityId"] as? String).flatMap(UUID.init(uuidString:))
+        let fileURL = fileTransfer.file.fileURL
         Task { @MainActor in
             pendingTransferCount = max(0, pendingTransferCount - 1)
             if let error {
                 lastSyncMessage = "Transfer failed: \(error.localizedDescription)"
+                return
+            }
+            if let activityID {
+                markActivityDelivered(activityID)
+                try? FileManager.default.removeItem(at: fileURL)
             }
         }
     }
+}
+
+/// WatchConnectivity dictionaries are property-list values, safe to hand across actors.
+private struct UncheckedPayload: @unchecked Sendable {
+    let value: [String: Any]
+    init(_ value: [String: Any]) { self.value = value }
 }

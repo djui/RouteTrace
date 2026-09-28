@@ -4,24 +4,24 @@ import SwiftUI
 struct WatchActivityRowView: View {
     let activity: ActivityRecording
 
-    var body: some View {
-        HStack(spacing: 10) {
-            ActivityTrackThumbnail(trackPoints: activity.trackPoints)
+    @Environment(WatchActivityStore.self) private var activityStore
 
-            VStack(alignment: .leading, spacing: 4) {
+    var body: some View {
+        let summary = activityStore.summary(for: activity)
+        HStack(spacing: 10) {
+            RouteShapeThumbnail(coordinates: summary.thumbnail, color: RouteAppearance.trackColor)
+
+            VStack(alignment: .leading, spacing: 2) {
                 Text(activity.displayTitle)
                     .font(.headline)
                     .lineLimit(2)
 
-                HStack {
-                    Label(RouteFormatting.distance(activity.totalDistanceMeters), systemImage: "ruler")
-                    Spacer()
-                    Label(activity.activityKind.displayName, systemImage: activity.activityKind.systemImage)
-                }
-                .font(.caption2)
-                .foregroundStyle(.secondary)
+                Text("\(RouteFormatting.distance(summary.distanceMeters)) · \(RouteFormatting.duration(activity.elapsedSeconds))")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
 
-                Text(activity.startedAt.formatted(date: .abbreviated, time: .shortened))
+                Text(activity.startedAt.formatted(.relative(presentation: .named)))
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }

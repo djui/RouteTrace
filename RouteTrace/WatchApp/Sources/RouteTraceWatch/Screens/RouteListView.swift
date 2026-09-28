@@ -60,11 +60,11 @@ struct RouteListView: View {
                 if isLoadingLibrary && routeStore.routes.isEmpty && activityStore.activities.isEmpty {
                     ProgressView(cloudSync.isSyncing ? "Syncing routes…" : "Loading…")
                 } else if routeStore.routes.isEmpty && activityStore.activities.isEmpty {
-                    ContentUnavailableView(
-                        "No Routes",
-                        systemImage: "map",
-                        description: Text("Import a route on iPhone — it will appear here automatically via iCloud or Apple Watch transfer.")
-                    )
+                    ContentUnavailableView {
+                        Label("No Routes", systemImage: "point.bottomleft.forward.to.point.topright.scurvepath")
+                    } description: {
+                        Text("Import a GPX file in RouteTrace on your iPhone. It appears here automatically.")
+                    }
                 } else {
                     libraryList
                 }
@@ -88,14 +88,14 @@ struct RouteListView: View {
                 }
             }
             .confirmationDialog(
-                "Delete this route?",
+                "Remove this route?",
                 isPresented: Binding(
                     get: { routePendingDelete != nil },
                     set: { if !$0 { routePendingDelete = nil } }
                 ),
                 titleVisibility: .visible
             ) {
-                Button("Delete", role: .destructive) {
+                Button("Remove", role: .destructive) {
                     if let route = routePendingDelete {
                         Task {
                             try? await routeStore.deleteRoute(id: route.id)
@@ -106,6 +106,8 @@ struct RouteListView: View {
                 Button("Cancel", role: .cancel) {
                     routePendingDelete = nil
                 }
+            } message: {
+                Text("It stays on your iPhone and can be sent again from there.")
             }
             .confirmationDialog(
                 "Remove from Watch?",
@@ -162,9 +164,9 @@ struct RouteListView: View {
                 }
             }
 
-            Section("Activities") {
+            Section("Recent Activities") {
                 if activityStore.activities.isEmpty {
-                    Text("No completed activities yet.")
+                    Text("Finished routes appear here.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else {
@@ -205,33 +207,34 @@ private struct RouteRowView: View {
     var body: some View {
         HStack(spacing: 10) {
             RouteShapeThumbnail(route: route)
+                .overlay(alignment: .bottomTrailing) {
+                    if route.offlineStatus != .missing {
+                        Image(systemName: "arrow.down.circle.fill")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(.white, .blue)
+                            .offset(x: 4, y: 4)
+                            .accessibilityLabel("Offline map")
+                    }
+                }
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(route.name)
                     .font(.headline)
-                HStack {
-                    Label(RouteFormatting.distance(route.distanceMeters), systemImage: "ruler")
-                    Spacer()
-                    offlineBadge
+                    .lineLimit(2)
+
+                HStack(spacing: 6) {
+                    Text(RouteFormatting.distance(route.distanceMeters))
+                    if let gain = route.elevationGainMeters, gain >= 1 {
+                        Text("↑\(RouteFormatting.elevation(gain))")
+                    }
                 }
                 .font(.caption2)
                 .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .monospacedDigit()
             }
         }
         .padding(.vertical, 2)
-    }
-
-    @ViewBuilder
-    private var offlineBadge: some View {
-        switch route.offlineStatus {
-        case .ready:
-            Label("Offline", systemImage: "arrow.down.circle.fill")
-                .foregroundStyle(.green)
-        case .partial:
-            Label("Partial", systemImage: "exclamationmark.triangle")
-                .foregroundStyle(.orange)
-        case .missing:
-            Label("Online only", systemImage: "wifi")
-        }
     }
 }

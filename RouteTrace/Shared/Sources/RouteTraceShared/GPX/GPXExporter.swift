@@ -1,10 +1,13 @@
 import Foundation
 
 public enum GPXExporter {
+    private static let header = #"<?xml version="1.0" encoding="UTF-8"?>"#
+    private static let gpxOpenTag = #"<gpx version="1.1" creator="RouteTrace" xmlns="http://www.topografix.com/GPX/1/1" xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v1">"#
+
     public static func exportTrack(name: String, points: [ParsedGPXPoint]) -> String {
         var lines: [String] = [
-            #"<?xml version="1.0" encoding="UTF-8"?>"#,
-            #"<gpx version="1.1" creator="RouteTrace">"#,
+            header,
+            gpxOpenTag,
             "  <metadata>",
             "    <name>\(escape(name))</name>",
             "  </metadata>",
@@ -12,6 +15,7 @@ public enum GPXExporter {
             "    <name>\(escape(name))</name>",
             "    <trkseg>"
         ]
+        lines.reserveCapacity(lines.count + points.count * 3 + 3)
 
         for point in points {
             lines.append("      <trkpt lat=\"\(point.latitude)\" lon=\"\(point.longitude)\">")
@@ -36,44 +40,31 @@ public enum GPXExporter {
     }
 
     public static func exportRoute(_ package: RoutePackage) -> String {
-        var lines: [String] = [
-            #"<?xml version="1.0" encoding="UTF-8"?>"#,
-            #"<gpx version="1.1" creator="RouteTrace">"#,
-            "  <metadata>",
-            "    <name>\(escape(package.name))</name>",
-            "  </metadata>",
-            "  <trk>",
-            "    <name>\(escape(package.name))</name>",
-            "    <trkseg>"
-        ]
-
-        for point in package.route {
-            lines.append("      <trkpt lat=\"\(point.latitude)\" lon=\"\(point.longitude)\">")
-            if let elevation = point.elevationMeters {
-                lines.append("        <ele>\(elevation)</ele>")
+        exportTrack(
+            name: package.name,
+            points: package.route.map {
+                ParsedGPXPoint(
+                    latitude: $0.latitude,
+                    longitude: $0.longitude,
+                    elevationMeters: $0.elevationMeters,
+                    timestamp: nil
+                )
             }
-            lines.append("      </trkpt>")
-        }
-
-        lines += [
-            "    </trkseg>",
-            "  </trk>",
-            "</gpx>"
-        ]
-
-        return lines.joined(separator: "\n")
+        )
     }
 
     public static func exportActivity(_ activity: ActivityRecording, route: RoutePackage?) -> String {
+        let formatter = ISO8601DateFormatter()
         var lines: [String] = [
-            #"<?xml version="1.0" encoding="UTF-8"?>"#,
-            #"<gpx version="1.1" creator="RouteTrace">"#,
+            header,
+            gpxOpenTag,
             "  <metadata>",
             "    <name>\(escape(activity.displayTitle))</name>",
-            "    <time>\(iso8601(activity.startedAt))</time>",
+            "    <time>\(formatter.string(from: activity.startedAt))</time>",
             "  </metadata>",
             "  <trk>",
-            "    <name>\(escape(activity.displayTitle))</name>"
+            "    <name>\(escape(activity.displayTitle))</name>",
+            "    <type>\(activity.activityKind.gpxTypeName)</type>"
         ]
 
         let segments = TrackSegmentSplitter.continuousSegments(from: activity.trackPoints)
@@ -84,7 +75,10 @@ public enum GPXExporter {
                 if let altitude = point.altitudeMeters {
                     lines.append("        <ele>\(altitude)</ele>")
                 }
-                lines.append("        <time>\(iso8601(point.timestamp))</time>")
+                lines.append("        <time>\(formatter.string(from: point.timestamp))</time>")
+                if let heartRate = point.heartRateBPM, heartRate > 0 {
+                    lines.append("        <extensions><gpxtpx:TrackPointExtension><gpxtpx:hr>\(Int(heartRate.rounded()))</gpxtpx:hr></gpxtpx:TrackPointExtension></extensions>")
+                }
                 lines.append("      </trkpt>")
             }
             lines.append("    </trkseg>")
@@ -98,14 +92,22 @@ public enum GPXExporter {
         return lines.joined(separator: "\n")
     }
 
-    private static func iso8601(_ date: Date) -> String {
-        ISO8601DateFormatter().string(from: date)
-    }
-
     private static func escape(_ value: String) -> String {
         value
             .replacingOccurrences(of: "&", with: "&amp;")
             .replacingOccurrences(of: "<", with: "&lt;")
             .replacingOccurrences(of: ">", with: "&gt;")
+    }
+}
+
+extension ActivityKind {
+    /// Activity type names understood by Strava, Garmin Connect and most GPX importers.
+    var gpxTypeName: String {
+        switch self {
+        case .running: "running"
+        case .trailRunning: "trail_running"
+        case .roadCycling: "cycling"
+        case .gravelCycling: "gravel_cycling"
+        }
     }
 }

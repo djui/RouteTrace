@@ -1,19 +1,16 @@
 import Foundation
 import RouteTraceShared
 import UserNotifications
-#if os(watchOS)
 import WatchKit
-#endif
 
+/// Turns navigation events into haptics and, when the app isn't on screen, notifications.
+///
+/// Haptics are the primary channel: a workout app can play them with the wrist down, and the
+/// left/right turn patterns are recognizable without looking. Notifications add the text for
+/// when the wrist comes up, but only while the app is in the background; while frontmost (also
+/// in Always On) banners would be suppressed anyway and the haptic already fired.
+@MainActor
 enum RouteNotificationService {
-    private static let cueDistanceThresholdMeters = 50.0
-
-    enum OffRouteLevel: Equatable {
-        case none
-        case warning
-        case critical
-    }
-
     static func requestAuthorizationIfNeeded() async -> Bool {
         let center = UNUserNotificationCenter.current()
         let settings = await center.notificationSettings()
@@ -27,76 +24,74 @@ enum RouteNotificationService {
         }
     }
 
-    static func notifyOffRouteWarning(distanceMeters: Double) async {
-        await deliver(
-            identifier: "routetrace.offroute.warning",
-            title: "Off Route",
-            body: "You are \(RouteFormatting.distance(distanceMeters)) from the planned route.",
-            interruptionLevel: .timeSensitive,
-            sound: .default
-        )
-    }
+    static func deliver(_ alert: NavigationAlert) {
+        guard WatchPreferences.shared.navigationNotificationsEnabled else { return }
 
-    static func notifyCriticalOffRoute(distanceMeters: Double) async {
-        await deliver(
-            identifier: "routetrace.offroute.critical",
-            title: "Far Off Route",
-            body: "You are \(RouteFormatting.distance(distanceMeters)) off route.",
-            interruptionLevel: .timeSensitive,
-            sound: .default
-        )
-    }
+        WKInterfaceDevice.current().play(haptic(for: alert))
 
-    static func notifyUpcomingCue(_ cue: RouteCue, distanceMeters: Double) async {
-        await deliver(
-            identifier: "routetrace.cue.\(cue.id.uuidString)",
-            title: "Upcoming Turn",
-            body: "\(cue.instruction) in \(RouteFormatting.distance(distanceMeters))",
-            interruptionLevel: .active,
-            sound: .default
-        )
+        guard WKApplication.shared().applicationState == .background else { return }
+        let (identifier, title, body) = notificationContent(for: alert)
+        Task {
+            await post(identifier: identifier, title: title, body: body, interruptionLevel: .timeSensitive)
+        }
     }
 
     static func notifyActivityComplete(activityTitle: String, distanceMeters: Double, elapsedSeconds: TimeInterval) async {
-        await deliver(
+        guard WKApplication.shared().applicationState == .background else { return }
+        await post(
             identifier: "routetrace.activity.complete.\(UUID().uuidString)",
-            title: "Activity Complete",
+            title: "Activity Saved",
             body: "\(activityTitle): \(RouteFormatting.distance(distanceMeters)) in \(RouteFormatting.duration(elapsedSeconds))",
-            interruptionLevel: .passive,
-            sound: nil
+            interruptionLevel: .passive
         )
     }
 
-    static func cueNotificationThresholdMet(distanceMeters: Double?) -> Bool {
-        guard let distanceMeters else { return false }
-        return distanceMeters <= cueDistanceThresholdMeters
+    static func haptic(for alert: NavigationAlert) -> WKHapticType {
+        switch alert {
+        case .approachingTurn(let cue, _):
+            switch cue.kind {
+            case .slightLeft, .turnLeft, .sharpLeft: .navigationLeftTurn
+            case .slightRight, .turnRight, .sharpRight: .navigationRightTurn
+            default: .navigationGenericManeuver
+            }
+        case .offRoute:
+            .retry
+        case .farOffRoute:
+            .failure
+        case .backOnRoute:
+            .success
+        case .arrived:
+            .success
+        }
     }
 
-    private static func deliver(
+    private static func notificationContent(for alert: NavigationAlert) -> (String, String, String) {
+        switch alert {
+        case .approachingTurn(let cue, let distance):
+            ("routetrace.cue.\(cue.id.uuidString)", cue.instruction, "In \(RouteFormatting.distance(distance))")
+        case .offRoute(let distance):
+            ("routetrace.offroute", "Off Route", "The route is \(RouteFormatting.distance(distance)) away.")
+        case .farOffRoute(let distance):
+            ("routetrace.offroute", "Far Off Route", "The route is \(RouteFormatting.distance(distance)) away.")
+        case .backOnRoute:
+            ("routetrace.offroute", "Back on Route", "Keep following the blue line.")
+        case .arrived:
+            ("routetrace.arrived", "You Made It", "End of the route. Finish the activity to save it.")
+        }
+    }
+
+    private static func post(
         identifier: String,
         title: String,
         body: String,
-        interruptionLevel: UNNotificationInterruptionLevel,
-        sound: UNNotificationSound?
+        interruptionLevel: UNNotificationInterruptionLevel
     ) async {
-        let enabled = await MainActor.run { WatchPreferences.shared.navigationNotificationsEnabled }
-        guard enabled else { return }
-
-        let appActive = await MainActor.run {
-            #if os(watchOS)
-            WKExtension.shared().applicationState == .active
-            #else
-            false
-            #endif
-        }
-        guard !appActive else { return }
         guard await requestAuthorizationIfNeeded() else { return }
 
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
         content.interruptionLevel = interruptionLevel
-        content.sound = sound
         content.threadIdentifier = "routetrace.navigation"
 
         let request = UNNotificationRequest(identifier: identifier, content: content, trigger: nil)

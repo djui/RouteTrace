@@ -27,6 +27,8 @@ public struct PersistedActiveActivity: Codable, Sendable {
     public let elapsedSeconds: TimeInterval
     public let engineState: PersistedNavigationEngineState
     public let savedAt: Date
+    /// Wall-clock timing; absent in states saved by older versions.
+    public let clock: ActivityClock?
 
     public init(
         phase: String,
@@ -35,6 +37,7 @@ public struct PersistedActiveActivity: Codable, Sendable {
         recording: ActivityRecording,
         elapsedSeconds: TimeInterval,
         engineState: PersistedNavigationEngineState,
+        clock: ActivityClock? = nil,
         savedAt: Date = Date()
     ) {
         self.phase = phase
@@ -43,7 +46,17 @@ public struct PersistedActiveActivity: Codable, Sendable {
         self.recording = recording
         self.elapsedSeconds = elapsedSeconds
         self.engineState = engineState
+        self.clock = clock
         self.savedAt = savedAt
+    }
+
+    /// The clock to resume with. Older saves only have a tick count, so an active activity is
+    /// assumed to have kept running since it was saved.
+    public var resolvedClock: ActivityClock {
+        if let clock {
+            return clock
+        }
+        return ActivityClock(accumulatedSeconds: elapsedSeconds, runningSince: phase == "active" ? savedAt : nil)
     }
 }
 

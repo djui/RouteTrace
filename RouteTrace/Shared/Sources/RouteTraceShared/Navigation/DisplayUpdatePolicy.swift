@@ -35,6 +35,8 @@ public final class DisplayUpdateCoordinator {
         lastRecenterCoordinate = nil
     }
 
+    /// Recenters only once both the minimum interval has passed and the position moved by the
+    /// minimum distance, so a stationary runner's GPS jitter doesn't keep redrawing the map.
     public func shouldRecenter(
         policy: DisplayUpdatePolicy,
         coordinate: GeoCoordinate,
@@ -48,22 +50,13 @@ public final class DisplayUpdateCoordinator {
         if policy.allowsImmediateRecenter {
             return true
         }
-
-        let now = Date()
-        if now.timeIntervalSince(lastRecenterAt) >= policy.recenterMinInterval {
+        guard let last = lastRecenterCoordinate else {
             return true
         }
 
-        if let last = lastRecenterCoordinate {
-            let distance = MapMath.haversineMeters(from: last, to: coordinate)
-            if distance >= policy.recenterMinDistanceMeters {
-                return true
-            }
-        } else {
-            return true
-        }
-
-        return false
+        let intervalElapsed = Date().timeIntervalSince(lastRecenterAt) >= policy.recenterMinInterval
+        let movedEnough = MapMath.haversineMeters(from: last, to: coordinate) >= policy.recenterMinDistanceMeters
+        return intervalElapsed && movedEnough
     }
 
     public func recordRecenter(at coordinate: GeoCoordinate) {

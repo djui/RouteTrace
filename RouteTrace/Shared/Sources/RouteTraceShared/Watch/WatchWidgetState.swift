@@ -24,6 +24,9 @@ public struct WatchActivityWidgetPayload: Codable, Sendable {
     public let isPaused: Bool
     public let isOffRoute: Bool
     public let updatedAt: Date
+    /// When running, the moment the elapsed time was zero; lets widgets show a live timer
+    /// (`Text(timerInterval:)`) without timeline reloads.
+    public let timerStartDate: Date?
 
     public init(
         routeName: String,
@@ -32,7 +35,8 @@ public struct WatchActivityWidgetPayload: Codable, Sendable {
         elapsedSeconds: TimeInterval,
         isPaused: Bool,
         isOffRoute: Bool,
-        updatedAt: Date
+        updatedAt: Date,
+        timerStartDate: Date? = nil
     ) {
         self.routeName = routeName
         self.progressFraction = progressFraction
@@ -41,49 +45,39 @@ public struct WatchActivityWidgetPayload: Codable, Sendable {
         self.isPaused = isPaused
         self.isOffRoute = isOffRoute
         self.updatedAt = updatedAt
+        self.timerStartDate = timerStartDate
     }
 }
 
 public enum WatchWidgetStateWriter {
     nonisolated(unsafe) private static var lastTimelineReloadAt: Date = .distantPast
+    nonisolated(unsafe) private static var lastWrittenPayload: WatchActivityWidgetPayload?
 
-    public static func writeSnapshot(
-        _ snapshot: NavigationSnapshot,
-        routeName: String,
-        elapsedSeconds: TimeInterval,
-        isPaused: Bool,
+    /// Publishes the compact state widgets read. Called often (every fix and timer tick), so it
+    /// skips writes that wouldn't change what a widget shows.
+    public static func write(
+        _ payload: WatchActivityWidgetPayload,
         minReloadInterval: TimeInterval = 15,
         forceTimelineReload: Bool = false
     ) {
-        let suite = UserDefaults(suiteName: WatchAppConstants.appGroupIdentifier) ?? .standard
-        if let data = try? RouteTracePayloadCoding.encode(snapshot) {
-            suite.set(data, forKey: WatchAppConstants.snapshotUserDefaultsKey)
+        if !forceTimelineReload, let last = lastWrittenPayload, last.isVisuallyEquivalent(to: payload) {
+            return
         }
+        lastWrittenPayload = payload
 
-        let total = snapshot.progressDistanceMeters + snapshot.distanceRemainingMeters
-        let fraction = total > 0 ? snapshot.progressDistanceMeters / total : 0
-        let payload = WatchActivityWidgetPayload(
-            routeName: routeName,
-            progressFraction: fraction,
-            distanceRemainingMeters: snapshot.distanceRemainingMeters,
-            elapsedSeconds: elapsedSeconds,
-            isPaused: isPaused,
-            isOffRoute: snapshot.isOffRoute,
-            updatedAt: snapshot.updatedAt
-        )
+        let suite = UserDefaults(suiteName: WatchAppConstants.appGroupIdentifier) ?? .standard
         if let data = try? RouteTracePayloadCoding.encode(payload) {
             suite.set(data, forKey: WatchAppConstants.activityStateUserDefaultsKey)
         }
-        reloadWidgetTimelinesIfNeeded(
-            minInterval: minReloadInterval,
-            force: forceTimelineReload
-        )
+        reloadWidgetTimelinesIfNeeded(minInterval: minReloadInterval, force: forceTimelineReload)
     }
 
     public static func clear() {
         let suite = UserDefaults(suiteName: WatchAppConstants.appGroupIdentifier) ?? .standard
+        // Also drops the full navigation snapshot older versions wrote here.
         suite.removeObject(forKey: WatchAppConstants.snapshotUserDefaultsKey)
         suite.removeObject(forKey: WatchAppConstants.activityStateUserDefaultsKey)
+        lastWrittenPayload = nil
         reloadWidgetTimelinesIfNeeded(minInterval: 0, force: true)
     }
 
@@ -100,5 +94,19 @@ public enum WatchWidgetStateWriter {
         #if canImport(WidgetKit)
         WidgetCenter.shared.reloadTimelines(ofKind: WatchAppConstants.widgetKind)
         #endif
+    }
+}
+
+private extension WatchActivityWidgetPayload {
+    /// Widgets show whole percent and the remaining distance at 10 m resolution; the running
+    /// timer renders itself from `timerStartDate`.
+    func isVisuallyEquivalent(to other: WatchActivityWidgetPayload) -> Bool {
+        routeName == other.routeName
+            && Int(progressFraction * 100) == Int(other.progressFraction * 100)
+            && Int(distanceRemainingMeters / 10) == Int(other.distanceRemainingMeters / 10)
+            && isPaused == other.isPaused
+            && isOffRoute == other.isOffRoute
+            && abs((timerStartDate ?? .distantPast).timeIntervalSince(other.timerStartDate ?? .distantPast)) < 1
+            && (timerStartDate != nil || Int(elapsedSeconds) == Int(other.elapsedSeconds))
     }
 }

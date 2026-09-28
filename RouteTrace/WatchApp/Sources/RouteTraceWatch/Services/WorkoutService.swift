@@ -23,7 +23,23 @@ final class WorkoutService: NSObject {
     private var builder: HKLiveWorkoutBuilder?
     private var routeBuilder: HKWorkoutRouteBuilder?
     private var workoutStartDate: Date?
+    private var activityKind: ActivityKind = .running
     private var insertedLocationCount = 0
+
+    private static let heartRateUnit = HKUnit.count().unitDivided(by: .minute())
+
+    var isSessionActive: Bool {
+        switch status {
+        case .running, .paused: true
+        default: false
+        }
+    }
+
+    /// Average heart rate as HealthKit computed it over the whole workout.
+    var averageHeartRateBPM: Double? {
+        guard let builder, let type = HKQuantityType.quantityType(forIdentifier: .heartRate) else { return nil }
+        return builder.statistics(for: type)?.averageQuantity()?.doubleValue(for: Self.heartRateUnit)
+    }
 
     func requestAuthorization(for activityKind: ActivityKind) async {
         guard isHealthKitAvailable else {
@@ -35,23 +51,22 @@ final class WorkoutService: NSObject {
             HKObjectType.workoutType(),
             HKSeriesType.workoutRoute()
         ]
-        if let energy = HKQuantityType.quantityType(forIdentifier: .activeEnergyBurned) {
-            typesToShare.insert(energy)
-        }
-        if let distance = HKQuantityType.quantityType(forIdentifier: .distanceWalkingRunning) {
-            typesToShare.insert(distance)
-        }
-
         var typesToRead: Set<HKObjectType> = [HKObjectType.workoutType()]
-        for identifier: HKQuantityTypeIdentifier in [.heartRate, .activeEnergyBurned, .distanceWalkingRunning] {
+        for identifier: HKQuantityTypeIdentifier in [.activeEnergyBurned, .distanceWalkingRunning, .distanceCycling] {
             if let type = HKQuantityType.quantityType(forIdentifier: identifier) {
+                typesToShare.insert(type)
                 typesToRead.insert(type)
             }
+        }
+        if let heartRate = HKQuantityType.quantityType(forIdentifier: .heartRate) {
+            typesToRead.insert(heartRate)
         }
 
         do {
             try await healthStore.requestAuthorization(toShare: typesToShare, read: typesToRead)
-            status = .ready
+            if case .unavailable = status {
+                status = .ready
+            }
         } catch {
             status = .unavailable(error.localizedDescription)
         }
@@ -65,135 +80,152 @@ final class WorkoutService: NSObject {
 
         do {
             let configuration = HKWorkoutConfiguration()
-            configuration.activityType = hkActivityType(for: activityKind)
+            configuration.activityType = Self.hkActivityType(for: activityKind)
             configuration.locationType = .outdoor
 
             let session = try HKWorkoutSession(healthStore: healthStore, configuration: configuration)
             let builder = session.associatedWorkoutBuilder()
             builder.dataSource = HKLiveWorkoutDataSource(healthStore: healthStore, workoutConfiguration: configuration)
-
-            session.delegate = self
-            builder.delegate = self
-
-            self.session = session
-            self.builder = builder
-            self.routeBuilder = HKWorkoutRouteBuilder(healthStore: healthStore, device: nil)
-            self.workoutStartDate = startDate
-            self.insertedLocationCount = 0
+            adopt(session: session, builder: builder, activityKind: activityKind, startDate: startDate)
 
             session.startActivity(with: startDate)
             try await builder.beginCollection(at: startDate)
             status = .running
         } catch {
-            session = nil
-            builder = nil
-            routeBuilder = nil
-            workoutStartDate = nil
+            reset()
             status = .unavailable(error.localizedDescription)
         }
     }
 
+    /// Reattaches to the workout session watchOS kept running while the app was relaunched.
+    /// Starting a second session would fail and lose heart rate and the Health record.
+    @discardableResult
+    func recoverActiveWorkout(activityKind: ActivityKind, startDate: Date) async -> Bool {
+        guard isHealthKitAvailable, session == nil else { return session != nil }
+        let recovered: HKWorkoutSession? = await withCheckedContinuation { continuation in
+            healthStore.recoverActiveWorkoutSession { session, _ in
+                continuation.resume(returning: session)
+            }
+        }
+        guard let recovered else { return false }
+
+        let builder = recovered.associatedWorkoutBuilder()
+        builder.dataSource = HKLiveWorkoutDataSource(healthStore: healthStore, workoutConfiguration: recovered.workoutConfiguration)
+        adopt(session: recovered, builder: builder, activityKind: activityKind, startDate: startDate)
+        status = recovered.state == .paused ? .paused : .running
+        return true
+    }
+
     func pauseWorkout() {
         session?.pause()
-        status = .paused
+        if session != nil {
+            status = .paused
+        }
     }
 
     func resumeWorkout() {
         session?.resume()
-        status = .running
+        if session != nil {
+            status = .running
+        }
     }
 
     func insertRouteLocation(_ location: CLLocation) async {
         guard let routeBuilder else { return }
-        await withCheckedContinuation { continuation in
-            routeBuilder.insertRouteData([location]) { success, error in
-                if success {
-                    Task { @MainActor in
-                        self.insertedLocationCount += 1
-                    }
-                } else if let error {
-                    Task { @MainActor in
-                        if case .running = self.status {
-                            self.status = .unavailable(error.localizedDescription)
-                        }
-                    }
-                }
-                continuation.resume()
-            }
+        do {
+            try await routeBuilder.insertRouteData([location])
+            insertedLocationCount += 1
+        } catch {
+            // A failed route sample doesn't invalidate the workout; keep recording.
         }
     }
 
+    /// Ends the session and saves the workout (with its route) to Health.
+    @discardableResult
     func finishWorkout(
         endDate: Date,
-        routeName: String? = nil,
-        activityId: UUID? = nil,
-        totalDistanceMeters: Double? = nil,
-        activityKind: ActivityKind? = nil
+        title: String,
+        activityId: UUID,
+        gpsDistanceMeters: Double
     ) async -> HKWorkout? {
         guard let session, let builder else { return nil }
+        defer { reset() }
 
         session.end()
 
         do {
             try await builder.endCollection(at: endDate)
+            try await addDistanceIfMissing(gpsDistanceMeters, to: builder, endDate: endDate)
+            try await builder.addMetadata([
+                HKMetadataKeyExternalUUID: activityId.uuidString,
+                HKMetadataKeyWorkoutBrandName: title
+            ])
 
-            if let totalDistanceMeters, totalDistanceMeters > 0,
-               let distanceType = HKQuantityType.quantityType(forIdentifier: .distanceWalkingRunning) {
-                let start = workoutStartDate ?? endDate.addingTimeInterval(-60)
-                let quantity = HKQuantity(unit: .meter(), doubleValue: totalDistanceMeters)
-                let sample = HKQuantitySample(type: distanceType, quantity: quantity, start: start, end: endDate)
-                try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                    builder.add([sample]) { _, error in
-                        if let error {
-                            continuation.resume(throwing: error)
-                        } else {
-                            continuation.resume()
-                        }
-                    }
-                }
+            guard let workout = try await builder.finishWorkout() else { return nil }
+
+            if let routeBuilder, insertedLocationCount > 0 {
+                _ = try? await routeBuilder.finishRoute(with: workout, metadata: [HKMetadataKeyWorkoutBrandName: title])
             }
-
-            let workout = try await builder.finishWorkout()
-
-            if let routeBuilder, let workout, insertedLocationCount > 0 {
-                var metadata: [String: Any] = [
-                    HKMetadataKeyExternalUUID: activityId?.uuidString ?? workout.uuid.uuidString
-                ]
-                if let routeName {
-                    metadata[HKMetadataKeyWorkoutBrandName] = routeName
-                }
-
-                await withCheckedContinuation { continuation in
-                    routeBuilder.finishRoute(with: workout, metadata: metadata) { _, error in
-                        if let error {
-                            Task { @MainActor in
-                                self.status = .unavailable(error.localizedDescription)
-                            }
-                        }
-                        continuation.resume()
-                    }
-                }
-            }
-
-            self.session = nil
-            self.builder = nil
-            self.routeBuilder = nil
-            self.workoutStartDate = nil
-            self.insertedLocationCount = 0
             status = .ready
             return workout
         } catch {
-            self.session = nil
-            self.builder = nil
-            self.routeBuilder = nil
-            self.workoutStartDate = nil
-            self.insertedLocationCount = 0
             status = .unavailable(error.localizedDescription)
             return nil
         }
     }
 
-    private func hkActivityType(for kind: ActivityKind) -> HKWorkoutActivityType {
+    /// Ends the session without saving anything to Health (the user discarded the activity).
+    func discardWorkout() async {
+        guard let session, let builder else { return }
+        defer { reset() }
+
+        session.end()
+        try? await builder.endCollection(at: Date())
+        builder.discardWorkout()
+        routeBuilder?.discard()
+        status = .ready
+    }
+
+    /// The live data source already records distance for outdoor workouts; adding our own
+    /// sample on top doubled it in Health. Only fill in when nothing was collected.
+    private func addDistanceIfMissing(_ meters: Double, to builder: HKLiveWorkoutBuilder, endDate: Date) async throws {
+        let identifier: HKQuantityTypeIdentifier = activityKind.speedCategory == .cycling ? .distanceCycling : .distanceWalkingRunning
+        guard meters > 0, let type = HKQuantityType.quantityType(forIdentifier: identifier) else { return }
+
+        let collected = builder.statistics(for: type)?.sumQuantity()?.doubleValue(for: .meter()) ?? 0
+        guard collected <= 0 else { return }
+
+        let start = workoutStartDate ?? endDate.addingTimeInterval(-60)
+        let sample = HKQuantitySample(
+            type: type,
+            quantity: HKQuantity(unit: .meter(), doubleValue: meters),
+            start: start,
+            end: endDate
+        )
+        try await builder.addSamples([sample])
+    }
+
+    private func adopt(session: HKWorkoutSession, builder: HKLiveWorkoutBuilder, activityKind: ActivityKind, startDate: Date) {
+        session.delegate = self
+        builder.delegate = self
+        self.session = session
+        self.builder = builder
+        self.routeBuilder = HKWorkoutRouteBuilder(healthStore: healthStore, device: nil)
+        self.workoutStartDate = startDate
+        self.activityKind = activityKind
+        self.insertedLocationCount = 0
+    }
+
+    private func reset() {
+        session = nil
+        builder = nil
+        routeBuilder = nil
+        workoutStartDate = nil
+        insertedLocationCount = 0
+        heartRateBPM = nil
+    }
+
+    private static func hkActivityType(for kind: ActivityKind) -> HKWorkoutActivityType {
         switch kind {
         case .running, .trailRunning:
             return .running
@@ -239,14 +271,13 @@ extension WorkoutService: HKLiveWorkoutBuilderDelegate {
         didCollectDataOf collectedTypes: Set<HKSampleType>
     ) {
         guard let heartRateType = HKQuantityType.quantityType(forIdentifier: .heartRate),
-              collectedTypes.contains(heartRateType) else { return }
+              collectedTypes.contains(heartRateType),
+              let bpm = workoutBuilder.statistics(for: heartRateType)?
+                .mostRecentQuantity()?
+                .doubleValue(for: HKUnit.count().unitDivided(by: .minute())) else { return }
 
         Task { @MainActor in
-            let statistics = workoutBuilder.statistics(for: heartRateType)
-            let unit = HKUnit.count().unitDivided(by: .minute())
-            if let quantity = statistics?.mostRecentQuantity() {
-                heartRateBPM = quantity.doubleValue(for: unit)
-            }
+            heartRateBPM = bpm
         }
     }
 }

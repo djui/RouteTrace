@@ -263,8 +263,10 @@ final class RouteTraceSharedTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: tempURL) }
 
         let parsed = try GPXParser().parse(data: try Data(contentsOf: tempURL))
-        XCTAssertEqual(parsed.primaryTrackPoints.first?.latitude, 48.8585, accuracy: 0.0001)
-        XCTAssertEqual(parsed.primaryTrackPoints.last?.latitude, 48.8566, accuracy: 0.0001)
+        let first = try XCTUnwrap(parsed.primaryTrackPoints.first)
+        let last = try XCTUnwrap(parsed.primaryTrackPoints.last)
+        XCTAssertEqual(first.latitude, 48.8585, accuracy: 0.0001)
+        XCTAssertEqual(last.latitude, 48.8566, accuracy: 0.0001)
     }
 
     func testCueGeneratorDetectsTurn() {
@@ -349,7 +351,7 @@ final class RouteTraceSharedTests: XCTestCase {
         let snapshot = engine.makeInitialSnapshot(routeId: package.id)
 
         XCTAssertEqual(snapshot.progressDistanceMeters, 0, accuracy: 0.01)
-        XCTAssertEqual(snapshot.distanceRemainingMeters, package.distanceMeters, accuracy: 0.01)
+        XCTAssertEqual(snapshot.distanceRemainingMeters, package.navigationDistanceMeters, accuracy: 0.01)
         XCTAssertNotNil(snapshot.nextCue)
     }
 
@@ -858,7 +860,13 @@ final class RouteTraceSharedTests: XCTestCase {
             timestamp: Date(timeIntervalSince1970: 1_700_000_010)
         )
         XCTAssertEqual(
-            filter.evaluate(input: next, activityKind: .running, batteryMode: .normal, mode: .recording),
+            filter.evaluate(
+                input: next,
+                activityKind: .running,
+                batteryMode: .normal,
+                mode: .recording,
+                referenceDate: next.timestamp
+            ),
             .accepted
         )
     }

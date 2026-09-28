@@ -31,11 +31,16 @@ public struct RouteProcessor {
         )
     }
 
+    /// Rebuilds a stored route from its source GPX.
+    ///
+    /// - Parameter preservingOfflineMap: Keep the existing offline pack. Only valid when the tile
+    ///   corridor is unchanged, i.e. same geometry and activity (reversing the direction).
     public func reprocessPackage(
         _ existing: RoutePackage,
         parsed: ParsedGPX,
         activityHint: ActivityKind,
-        reverseDirection: Bool = false
+        reverseDirection: Bool = false,
+        preservingOfflineMap: Bool = false
     ) -> RoutePackage {
         let rawPoints = parsed.primaryTrackPoints
         let validPoints = rawPoints.filter {
@@ -50,12 +55,12 @@ public struct RouteProcessor {
             importedAt: existing.importedAt,
             activityHint: activityHint,
             points: orderedPoints,
-            offlineMapManifest: nil,
+            offlineMapManifest: preservingOfflineMap ? existing.offlineMapManifest : nil,
             fallbackBoundingBox: existing.boundingBox
         )
     }
 
-    public func reversePackage(_ existing: RoutePackage) -> RoutePackage {
+    public func reversePackage(_ existing: RoutePackage, preservingOfflineMap: Bool = false) -> RoutePackage {
         let points = existing.route.map {
             ParsedGPXPoint(
                 latitude: $0.latitude,
@@ -73,7 +78,7 @@ public struct RouteProcessor {
             importedAt: existing.importedAt,
             activityHint: existing.activityHint,
             points: orderedPoints,
-            offlineMapManifest: nil,
+            offlineMapManifest: preservingOfflineMap ? existing.offlineMapManifest : nil,
             fallbackBoundingBox: existing.boundingBox
         )
     }
@@ -162,14 +167,11 @@ public struct RouteProcessor {
     private func elevationStats(for route: [RoutePoint]) -> (gain: Double?, loss: Double?) {
         let elevations = route.compactMap(\.elevationMeters)
         guard elevations.count >= 2 else { return (nil, nil) }
-
-        var gain = 0.0
-        var loss = 0.0
-        for index in 1..<elevations.count {
-            let delta = elevations[index] - elevations[index - 1]
-            if delta > 0 { gain += delta } else { loss += abs(delta) }
-        }
-        return (gain, loss)
+        let totals = ElevationStatistics.gainAndLoss(
+            of: elevations,
+            thresholdMeters: ElevationStatistics.routeThresholdMeters
+        )
+        return (totals.gain, totals.loss)
     }
 
     public func simplify(route: [RoutePoint], toleranceMeters: Double) -> [RoutePoint] {
@@ -252,15 +254,7 @@ public struct RouteProcessor {
             let b = route[end].coordinate
 
             for i in (start + 1)..<end {
-                let point = route[i].coordinate
-                let projection = MapMath.nearestPointOnPolyline(
-                    to: point,
-                    route: [
-                        RoutePoint(id: 0, latitude: a.latitude, longitude: a.longitude, elevationMeters: nil, distanceFromStartMeters: 0, bearingDegrees: nil),
-                        RoutePoint(id: 1, latitude: b.latitude, longitude: b.longitude, elevationMeters: nil, distanceFromStartMeters: 1, bearingDegrees: nil)
-                    ]
-                )
-                let distance = projection?.distanceMeters ?? 0
+                let distance = MapMath.distanceMeters(from: route[i].coordinate, toSegmentFrom: a, to: b)
                 if distance > maxDistance {
                     maxDistance = distance
                     index = i
