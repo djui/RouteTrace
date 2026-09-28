@@ -37,6 +37,8 @@ struct SettingsView: View {
                     } footer: {
                         Text("Preselected when importing a GPX file. Offline maps are prepared in the background after import.")
                     }
+
+                    unitsSection(settings)
                 } else {
                     ProgressView()
                         .frame(maxWidth: .infinity)
@@ -102,6 +104,40 @@ struct SettingsView: View {
         } footer: {
             Text(settings.batteryMode.detailDescription)
         }
+    }
+
+    private func unitsSection(_ settings: AppSettingsEntity) -> some View {
+        let preference = UnitPreference.shared
+        return Section {
+            Picker(selection: unitSystemBinding(for: settings, current: preference.system)) {
+                ForEach(UnitSystem.allCases) { system in
+                    Text(system.displayName).tag(system)
+                }
+            } label: {
+                Label("Units", systemImage: "ruler")
+            }
+        } footer: {
+            Text(Self.unitsDescription(system: preference.system, units: preference.units))
+        }
+    }
+
+    private func unitSystemBinding(for settings: AppSettingsEntity, current: UnitSystem) -> Binding<UnitSystem> {
+        Binding(
+            get: { current },
+            set: { newValue in
+                UnitPreference.shared.system = newValue
+                #if canImport(WatchConnectivity)
+                connectivityManager.syncSettingsToWatch(batteryMode: settings.batteryMode)
+                #endif
+            }
+        )
+    }
+
+    private static func unitsDescription(system: UnitSystem, units: DisplayUnits) -> String {
+        let distance = units.distance == .miles ? "miles" : "kilometers"
+        let height = units.elevation == .feet ? "feet" : "meters"
+        let origin = system == .automatic ? "Automatic follows your region. " : ""
+        return "\(origin)Distances in \(distance), heights in \(height), here and on Apple Watch."
     }
 
     private func batteryModeBinding(for settings: AppSettingsEntity) -> Binding<BatteryMode> {

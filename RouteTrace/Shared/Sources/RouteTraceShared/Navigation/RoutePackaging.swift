@@ -257,42 +257,90 @@ public enum RoutePackagingError: Error, LocalizedError {
     }
 }
 
+/// Formats distances, elevations and speeds in the units from `UnitPreference`.
+///
+/// Every function takes the units to use, defaulting to the shared setting, so a SwiftUI body
+/// that formats a value re-renders when the setting changes.
 public enum RouteFormatting {
     /// Keeps a value and its unit on one line ("400 m", never "400⏎m").
     private static let unitSpace = "\u{00A0}"
 
-    public static func distance(_ meters: Double) -> String {
+    public static func distance(_ meters: Double, units: DisplayUnits = UnitPreference.shared.units) -> String {
         guard meters.isFinite else { return "—" }
-        if meters >= 1000 {
-            return "\(number(meters / 1000, fractionDigits: meters >= 100_000 ? 0 : 1))\(unitSpace)km"
+        switch units.distance {
+        case .kilometers:
+            if meters >= 1000 {
+                return "\(number(meters / 1000, fractionDigits: meters >= 100_000 ? 0 : 1))\(unitSpace)km"
+            }
+            return "\(number(meters, fractionDigits: 0))\(unitSpace)m"
+        case .miles:
+            let miles = meters / DisplayUnits.metersPerMile
+            // Below a tenth of a mile, feet read better than "0.0 mi".
+            if abs(miles) >= 0.1 {
+                return "\(number(miles, fractionDigits: miles >= 100 ? 0 : 1))\(unitSpace)mi"
+            }
+            return "\(number(meters / DisplayUnits.metersPerFoot, fractionDigits: 0))\(unitSpace)ft"
         }
-        return "\(number(meters, fractionDigits: 0))\(unitSpace)m"
     }
 
-    public static func elevation(_ meters: Double?) -> String {
+    public static func elevation(_ meters: Double?, units: DisplayUnits = UnitPreference.shared.units) -> String {
         guard let meters, meters.isFinite else { return "—" }
-        return "\(number(meters, fractionDigits: 0))\(unitSpace)m"
+        return "\(number(elevationValue(meters, units: units), fractionDigits: 0))\(unitSpace)\(elevationSymbol(units: units))"
     }
 
-    public static func pace(secondsPerKm: Double) -> String {
-        guard secondsPerKm.isFinite, secondsPerKm > 0, secondsPerKm < 60 * 60 else { return "—" }
-        let total = Int(secondsPerKm.rounded())
-        return String(format: "%d:%02d\u{00A0}/km", total / 60, total % 60)
+    public static func pace(secondsPerKm: Double, units: DisplayUnits = UnitPreference.shared.units) -> String {
+        let secondsPerUnit = secondsPerKm * units.metersPerDistanceUnit / 1000
+        guard secondsPerUnit.isFinite, secondsPerUnit > 0, secondsPerUnit < 60 * 60 else { return "—" }
+        let total = Int(secondsPerUnit.rounded())
+        return String(format: "%d:%02d\u{00A0}%@", total / 60, total % 60, paceSymbol(units: units))
     }
 
-    public static func speed(_ metersPerSecond: Double?) -> String {
+    public static func speed(_ metersPerSecond: Double?, units: DisplayUnits = UnitPreference.shared.units) -> String {
         guard let metersPerSecond, metersPerSecond.isFinite, metersPerSecond > 0 else { return "—" }
-        return "\(number(metersPerSecond * 3.6, fractionDigits: 1))\(unitSpace)km/h"
+        let perHour = metersPerSecond * 3600 / units.metersPerDistanceUnit
+        return "\(number(perHour, fractionDigits: 1))\(unitSpace)\(speedSymbol(units: units))"
     }
 
-    public static func speedOrPace(_ metersPerSecond: Double?, mode: SpeedDisplayMode) -> String {
+    public static func speedOrPace(
+        _ metersPerSecond: Double?,
+        mode: SpeedDisplayMode,
+        units: DisplayUnits = UnitPreference.shared.units
+    ) -> String {
         guard let metersPerSecond, metersPerSecond > 0 else { return "—" }
         switch mode {
         case .pace:
-            return pace(secondsPerKm: 1000.0 / metersPerSecond)
+            return pace(secondsPerKm: 1000.0 / metersPerSecond, units: units)
         case .speed:
-            return speed(metersPerSecond)
+            return speed(metersPerSecond, units: units)
         }
+    }
+
+    // MARK: Values and symbols for charts and large-number layouts
+
+    /// A distance in kilometres or miles.
+    public static func distanceValue(_ meters: Double, units: DisplayUnits = UnitPreference.shared.units) -> Double {
+        meters / units.metersPerDistanceUnit
+    }
+
+    /// An elevation in metres or feet.
+    public static func elevationValue(_ meters: Double, units: DisplayUnits = UnitPreference.shared.units) -> Double {
+        meters / units.metersPerElevationUnit
+    }
+
+    public static func distanceSymbol(units: DisplayUnits = UnitPreference.shared.units) -> String {
+        units.distance == .miles ? "mi" : "km"
+    }
+
+    public static func elevationSymbol(units: DisplayUnits = UnitPreference.shared.units) -> String {
+        units.elevation == .feet ? "ft" : "m"
+    }
+
+    public static func paceSymbol(units: DisplayUnits = UnitPreference.shared.units) -> String {
+        units.distance == .miles ? "/mi" : "/km"
+    }
+
+    public static func speedSymbol(units: DisplayUnits = UnitPreference.shared.units) -> String {
+        units.distance == .miles ? "mph" : "km/h"
     }
 
     public static func duration(_ seconds: TimeInterval) -> String {
@@ -307,7 +355,7 @@ public enum RouteFormatting {
         return String(format: "%d:%02d", minutes, secs)
     }
 
-    /// Locale-aware decimal formatting (e.g. "12,5" in German), metric units kept as-is.
+    /// Locale-aware decimal formatting (e.g. "12,5" in German); the unit comes from the caller.
     private static func number(_ value: Double, fractionDigits: Int) -> String {
         value.formatted(.number.precision(.fractionLength(fractionDigits)))
     }

@@ -475,3 +475,73 @@ final class LiveActivityTrackingTests: XCTestCase {
         XCTAssertEqual(tracker.alerts(for: snapshot(progress: 2_000), activity: .running, speedMetersPerSecond: 3), [])
     }
 }
+
+final class UnitFormattingTests: XCTestCase {
+    private let space = "\u{00A0}"
+
+    /// Numbers are formatted for the current locale, so build expectations the same way.
+    private func number(_ value: Double, _ fractionDigits: Int) -> String {
+        value.formatted(.number.precision(.fractionLength(fractionDigits)))
+    }
+
+    func testMetricDistances() {
+        XCTAssertEqual(RouteFormatting.distance(450, units: .metric), "\(number(450, 0))\(space)m")
+        XCTAssertEqual(RouteFormatting.distance(12_345, units: .metric), "\(number(12.345, 1))\(space)km")
+        XCTAssertEqual(RouteFormatting.distance(123_456, units: .metric), "\(number(123.456, 0))\(space)km")
+    }
+
+    func testImperialDistancesSwitchFromFeetToMilesAtATenthOfAMile() {
+        XCTAssertEqual(RouteFormatting.distance(DisplayUnits.metersPerMile * 3.1, units: .imperial), "\(number(3.1, 1))\(space)mi")
+        XCTAssertEqual(RouteFormatting.distance(100, units: .imperial), "\(number(328.084, 0))\(space)ft")
+        XCTAssertTrue(RouteFormatting.distance(160, units: .imperial).hasSuffix("ft"))
+        XCTAssertTrue(RouteFormatting.distance(161, units: .imperial).hasSuffix("mi"))
+    }
+
+    func testElevation() {
+        XCTAssertEqual(RouteFormatting.elevation(1000, units: .metric), "\(number(1000, 0))\(space)m")
+        XCTAssertEqual(RouteFormatting.elevation(1000, units: .imperial), "\(number(3280.84, 0))\(space)ft")
+        XCTAssertEqual(RouteFormatting.elevation(nil, units: .imperial), "—")
+    }
+
+    func testPaceAndSpeed() {
+        // 5:00 per kilometer is 8:03 per mile; 10 m/s is 36 km/h or 22.4 mph.
+        XCTAssertEqual(RouteFormatting.pace(secondsPerKm: 300, units: .metric), "5:00\(space)/km")
+        XCTAssertEqual(RouteFormatting.pace(secondsPerKm: 300, units: .imperial), "8:03\(space)/mi")
+        XCTAssertEqual(RouteFormatting.speed(10, units: .metric), "\(number(36, 1))\(space)km/h")
+        XCTAssertEqual(RouteFormatting.speed(10, units: .imperial), "\(number(22.369, 1))\(space)mph")
+        XCTAssertEqual(RouteFormatting.speedOrPace(1000.0 / 300, mode: .pace, units: .imperial), "8:03\(space)/mi")
+    }
+
+    func testChartValuesUseDisplayUnits() {
+        XCTAssertEqual(RouteFormatting.distanceValue(DisplayUnits.metersPerMile, units: .imperial), 1, accuracy: 1e-9)
+        XCTAssertEqual(RouteFormatting.distanceValue(2500, units: .metric), 2.5, accuracy: 1e-9)
+        XCTAssertEqual(RouteFormatting.elevationValue(304.8, units: .imperial), 1000, accuracy: 1e-9)
+    }
+
+    func testAutomaticFollowsTheRegion() {
+        XCTAssertEqual(DisplayUnits(system: .automatic, locale: Locale(identifier: "en_US")), .imperial)
+        XCTAssertEqual(DisplayUnits(system: .automatic, locale: Locale(identifier: "de_DE")), .metric)
+        XCTAssertEqual(
+            DisplayUnits(system: .automatic, locale: Locale(identifier: "en_GB")),
+            DisplayUnits(distance: .miles, elevation: .meters)
+        )
+        XCTAssertEqual(DisplayUnits(system: .metric, locale: Locale(identifier: "en_US")), .metric)
+        XCTAssertEqual(DisplayUnits(system: .imperial, locale: Locale(identifier: "sv_SE")), .imperial)
+    }
+
+    func testPreferenceIsStoredAndReloaded() throws {
+        let suiteName = "UnitPreferenceTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let preference = UnitPreference(defaults: defaults)
+        XCTAssertEqual(preference.system, .automatic)
+        preference.system = .imperial
+        XCTAssertEqual(UnitPreference(defaults: defaults).system, .imperial)
+
+        // Another process (the app, for a widget) changes the stored value.
+        defaults.set(UnitSystem.metric.rawValue, forKey: UnitPreference.storageKey)
+        preference.reload()
+        XCTAssertEqual(preference.system, .metric)
+    }
+}

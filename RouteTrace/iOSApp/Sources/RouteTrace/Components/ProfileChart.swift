@@ -2,46 +2,76 @@ import Charts
 import RouteTraceShared
 import SwiftUI
 
+/// One sample of a distance-based profile, in base units: metres along the route, and metres
+/// for elevation (other series, such as heart rate, use their own unit).
 struct ProfilePoint: Identifiable, Hashable {
     let id: Int
-    let distanceKm: Double
+    let distanceMeters: Double
     let value: Double
+}
+
+/// What a profile's values measure, which decides their unit on screen.
+enum ProfileValueUnit {
+    /// Metres, shown in metres or feet.
+    case elevation
+    /// Shown as-is with this label, for example "bpm".
+    case fixed(String)
 }
 
 /// Distance-based profile (elevation, heart rate, …) with drag-to-inspect.
 ///
 /// Series are downsampled and the axis domains computed once up front; the previous charts
 /// recomputed every sample for every mark, which made long activities take seconds to render.
+/// Distances and elevations follow the unit setting.
 struct ProfileChart: View {
-    let points: [ProfilePoint]
     let color: Color
     let seriesName: String
-    let unit: String
     var height: CGFloat = 190
     var fillsArea = true
 
+    /// Samples converted to display units: kilometres or miles, and metres or feet.
+    private let points: [PlotPoint]
+    private let units: DisplayUnits
+    private let valueLabel: String
     private let valueDomain: ClosedRange<Double>
     private let distanceDomain: ClosedRange<Double>
 
     /// Explicit, because the default trailing-axis labels were barely legible in Dark Mode.
     private static let axisLabelColor = Color(uiColor: .secondaryLabel)
 
-    @State private var selectedDistanceKm: Double?
+    @State private var selectedDistance: Double?
 
     init(
         points: [ProfilePoint],
         color: Color,
         seriesName: String,
-        unit: String,
+        valueUnit: ProfileValueUnit,
         height: CGFloat = 190,
         fillsArea: Bool = true,
         maxPoints: Int = 300
     ) {
-        let thinned = ProfileDownsampler.downsample(points, maxCount: maxPoints)
+        let units = UnitPreference.shared.units
+        let perValueUnit: Double
+        switch valueUnit {
+        case .elevation:
+            perValueUnit = units.metersPerElevationUnit
+            valueLabel = RouteFormatting.elevationSymbol(units: units)
+        case .fixed(let label):
+            perValueUnit = 1
+            valueLabel = label
+        }
+
+        let thinned = ProfileDownsampler.downsample(points, maxCount: maxPoints).map { point in
+            PlotPoint(
+                id: point.id,
+                distance: point.distanceMeters / units.metersPerDistanceUnit,
+                value: point.value / perValueUnit
+            )
+        }
         self.points = thinned
+        self.units = units
         self.color = color
         self.seriesName = seriesName
-        self.unit = unit
         self.height = height
         self.fillsArea = fillsArea
 
@@ -50,12 +80,12 @@ struct ProfileChart: View {
         let maxValue = values.max() ?? 1
         let padding = max(maxValue - minValue, 10) * 0.12
         valueDomain = (minValue - padding)...(maxValue + padding)
-        distanceDomain = 0...max(thinned.last?.distanceKm ?? 1, 0.01)
+        distanceDomain = 0...max(thinned.last?.distance ?? 1, 0.01)
     }
 
-    private var selectedPoint: ProfilePoint? {
-        guard let selectedDistanceKm else { return nil }
-        return points.min { abs($0.distanceKm - selectedDistanceKm) < abs($1.distanceKm - selectedDistanceKm) }
+    private var selectedPoint: PlotPoint? {
+        guard let selectedDistance else { return nil }
+        return points.min { abs($0.distance - selectedDistance) < abs($1.distance - selectedDistance) }
     }
 
     var body: some View {
@@ -63,7 +93,7 @@ struct ProfileChart: View {
             ForEach(points) { point in
                 if fillsArea {
                     AreaMark(
-                        x: .value("Distance", point.distanceKm),
+                        x: .value("Distance", point.distance),
                         yStart: .value("Baseline", valueDomain.lowerBound),
                         yEnd: .value(seriesName, point.value)
                     )
@@ -78,7 +108,7 @@ struct ProfileChart: View {
                 }
 
                 LineMark(
-                    x: .value("Distance", point.distanceKm),
+                    x: .value("Distance", point.distance),
                     y: .value(seriesName, point.value)
                 )
                 .foregroundStyle(color)
@@ -87,7 +117,7 @@ struct ProfileChart: View {
             }
 
             if let selectedPoint {
-                RuleMark(x: .value("Selected", selectedPoint.distanceKm))
+                RuleMark(x: .value("Selected", selectedPoint.distance))
                     .foregroundStyle(Color.secondary.opacity(0.45))
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
                     .annotation(
@@ -99,7 +129,7 @@ struct ProfileChart: View {
                     }
 
                 PointMark(
-                    x: .value("Distance", selectedPoint.distanceKm),
+                    x: .value("Distance", selectedPoint.distance),
                     y: .value(seriesName, selectedPoint.value)
                 )
                 .foregroundStyle(color)
@@ -108,13 +138,13 @@ struct ProfileChart: View {
         }
         .chartXScale(domain: distanceDomain)
         .chartYScale(domain: valueDomain)
-        .chartXSelection(value: $selectedDistanceKm)
+        .chartXSelection(value: $selectedDistance)
         .chartXAxis {
             AxisMarks(values: .automatic(desiredCount: 5)) { value in
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5, dash: [2, 3]))
                 AxisValueLabel {
-                    if let km = value.as(Double.self) {
-                        Text("\(km.formatted(.number.precision(.fractionLength(0...1)))) km")
+                    if let distance = value.as(Double.self) {
+                        Text("\(distance.formatted(.number.precision(.fractionLength(0...1)))) \(RouteFormatting.distanceSymbol(units: units))")
                     }
                 }
                 .foregroundStyle(Self.axisLabelColor)
@@ -125,7 +155,7 @@ struct ProfileChart: View {
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
                 AxisValueLabel {
                     if let number = value.as(Double.self) {
-                        Text("\(Int(number.rounded())) \(unit)")
+                        Text("\(Int(number.rounded())) \(valueLabel)")
                     }
                 }
                 .foregroundStyle(Self.axisLabelColor)
@@ -136,12 +166,12 @@ struct ProfileChart: View {
         .accessibilityValue(accessibilitySummary)
     }
 
-    private func selectionCallout(for point: ProfilePoint) -> some View {
+    private func selectionCallout(for point: PlotPoint) -> some View {
         VStack(spacing: 1) {
-            Text("\(Int(point.value.rounded())) \(unit)")
+            Text("\(Int(point.value.rounded())) \(valueLabel)")
                 .font(.subheadline.weight(.semibold))
                 .monospacedDigit()
-            Text(RouteFormatting.distance(point.distanceKm * 1000))
+            Text(RouteFormatting.distance(point.distance * units.metersPerDistanceUnit, units: units))
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
@@ -154,7 +184,14 @@ struct ProfileChart: View {
     private var accessibilitySummary: String {
         let values = points.map(\.value)
         guard let low = values.min(), let high = values.max() else { return "" }
-        return "From \(Int(low.rounded())) to \(Int(high.rounded())) \(unit) over \(RouteFormatting.distance((points.last?.distanceKm ?? 0) * 1000))"
+        let length = RouteFormatting.distance((points.last?.distance ?? 0) * units.metersPerDistanceUnit, units: units)
+        return "From \(Int(low.rounded())) to \(Int(high.rounded())) \(valueLabel) over \(length)"
+    }
+
+    private struct PlotPoint: Identifiable {
+        let id: Int
+        let distance: Double
+        let value: Double
     }
 }
 
@@ -162,7 +199,7 @@ extension ProfilePoint {
     static func elevation(from route: [RoutePoint]) -> [ProfilePoint] {
         route.compactMap { point in
             guard let elevation = point.elevationMeters else { return nil }
-            return ProfilePoint(id: point.id, distanceKm: point.distanceFromStartMeters / 1000, value: elevation)
+            return ProfilePoint(id: point.id, distanceMeters: point.distanceFromStartMeters, value: elevation)
         }
     }
 
@@ -172,7 +209,7 @@ extension ProfilePoint {
     ) -> [ProfilePoint] {
         samples.enumerated().compactMap { index, sample in
             guard let number = value(sample), number.isFinite else { return nil }
-            return ProfilePoint(id: index, distanceKm: sample.distanceMeters / 1000, value: number)
+            return ProfilePoint(id: index, distanceMeters: sample.distanceMeters, value: number)
         }
     }
 }
@@ -191,7 +228,7 @@ extension Array where Element == ProfilePoint {
             let lower = Swift.max(0, index - half)
             let upper = Swift.min(count - 1, index + half)
             let mean = (prefix[upper + 1] - prefix[lower]) / Double(upper - lower + 1)
-            return ProfilePoint(id: self[index].id, distanceKm: self[index].distanceKm, value: mean)
+            return ProfilePoint(id: self[index].id, distanceMeters: self[index].distanceMeters, value: mean)
         }
     }
 }

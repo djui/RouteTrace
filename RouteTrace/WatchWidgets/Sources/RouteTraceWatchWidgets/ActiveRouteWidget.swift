@@ -24,6 +24,7 @@ struct ActiveRouteTimelineProvider: TimelineProvider {
     }
 
     func getSnapshot(in context: Context, completion: @escaping (ActiveRouteTimelineEntry) -> Void) {
+        UnitPreference.shared.reload()
         completion(
             ActiveRouteTimelineEntry(
                 date: Date(),
@@ -33,6 +34,8 @@ struct ActiveRouteTimelineProvider: TimelineProvider {
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<ActiveRouteTimelineEntry>) -> Void) {
+        // The watch app may have changed the unit setting since this extension last ran.
+        UnitPreference.shared.reload()
         let payload = WatchWidgetStateWriter.readWidgetPayload()
         let entry = ActiveRouteTimelineEntry(date: Date(), payload: payload)
         let refresh = payload == nil ? Date().addingTimeInterval(900) : Date().addingTimeInterval(30)

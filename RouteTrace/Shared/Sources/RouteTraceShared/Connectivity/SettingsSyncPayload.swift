@@ -18,19 +18,23 @@ public enum SettingsSyncKeys {
     public static let type = "type"
     public static let settingsSync = "settingsSync"
     public static let batteryMode = "batteryMode"
+    public static let unitSystem = "unitSystem"
 }
 
 public struct SettingsSyncPayload: Sendable, Equatable {
     public let batteryMode: BatteryMode
+    public let unitSystem: UnitSystem
 
-    public init(batteryMode: BatteryMode) {
+    public init(batteryMode: BatteryMode, unitSystem: UnitSystem) {
         self.batteryMode = batteryMode
+        self.unitSystem = unitSystem
     }
 
     public var dictionaryRepresentation: [String: Any] {
         [
             SettingsSyncKeys.type: SettingsSyncKeys.settingsSync,
-            SettingsSyncKeys.batteryMode: batteryMode.rawValue
+            SettingsSyncKeys.batteryMode: batteryMode.rawValue,
+            SettingsSyncKeys.unitSystem: unitSystem.rawValue
         ]
     }
 
@@ -41,5 +45,7 @@ public struct SettingsSyncPayload: Sendable, Equatable {
             return nil
         }
         self.batteryMode = batteryMode
+        // Payloads from app versions without a unit setting follow the region.
+        self.unitSystem = (dictionary[SettingsSyncKeys.unitSystem] as? String).flatMap(UnitSystem.init(rawValue:)) ?? .automatic
     }
 }
