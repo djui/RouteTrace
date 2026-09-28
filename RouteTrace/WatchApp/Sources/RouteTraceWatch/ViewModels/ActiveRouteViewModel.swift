@@ -3,6 +3,68 @@ import Foundation
 import Observation
 import RouteTraceShared
 
+/// Where the route is when the runner has left it.
+struct RejoinGuidance: Equatable {
+    let distanceMeters: Double
+    /// Compass bearing from the runner to the closest point on the route.
+    let bearingDegrees: Double
+    /// Direction of travel, when moving; lets the arrow point relative to the runner.
+    let courseDegrees: Double?
+
+    var relativeBearingDegrees: Double? {
+        courseDegrees.map { MapMath.normalizeBearing(bearingDegrees - $0) }
+    }
+
+    var compassDirection: String {
+        let names = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
+        return names[Int((MapMath.normalizeBearing(bearingDegrees) + 22.5) / 45) % 8]
+    }
+}
+
+/// Elevation along the route, prepared once per route for the altitude page.
+struct RouteElevationProfile: Equatable {
+    struct Sample: Equatable {
+        let distanceMeters: Double
+        let elevationMeters: Double
+    }
+
+    let samples: [Sample]
+    let totalDistanceMeters: Double
+    let minElevation: Double
+    let maxElevation: Double
+
+    init?(route: RoutePackage, maxSamples: Int = 160) {
+        let all = route.route.compactMap { point in
+            point.elevationMeters.map { Sample(distanceMeters: point.distanceFromStartMeters, elevationMeters: $0) }
+        }
+        guard all.count >= 2 else { return nil }
+        samples = ProfileDownsampler.downsample(all, maxCount: maxSamples)
+        totalDistanceMeters = route.navigationDistanceMeters
+        minElevation = samples.map(\.elevationMeters).min() ?? 0
+        maxElevation = samples.map(\.elevationMeters).max() ?? 1
+    }
+
+    func elevation(at distance: Double) -> Double? {
+        guard let first = samples.first, let last = samples.last else { return nil }
+        if distance <= first.distanceMeters { return first.elevationMeters }
+        if distance >= last.distanceMeters { return last.elevationMeters }
+        guard let upper = samples.firstIndex(where: { $0.distanceMeters >= distance }), upper > 0 else {
+            return last.elevationMeters
+        }
+        let a = samples[upper - 1]
+        let b = samples[upper]
+        let span = b.distanceMeters - a.distanceMeters
+        guard span > 0 else { return b.elevationMeters }
+        return a.elevationMeters + (distance - a.distanceMeters) / span * (b.elevationMeters - a.elevationMeters)
+    }
+
+    /// Climbing still ahead of `distance`.
+    func remainingAscent(after distance: Double) -> Double {
+        let ahead = samples.filter { $0.distanceMeters >= distance }.map(\.elevationMeters)
+        return ElevationStatistics.gainAndLoss(of: ahead, thresholdMeters: ElevationStatistics.routeThresholdMeters).gain
+    }
+}
+
 @MainActor
 @Observable
 final class ActiveRouteViewModel {
@@ -18,38 +80,42 @@ final class ActiveRouteViewModel {
     private(set) var routePackage: RoutePackage?
     private(set) var activityKind: ActivityKind = .running
     private(set) var navigationSnapshot: NavigationSnapshot?
-    private(set) var recording = ActivityRecording(
-        routeId: UUID(),
-        routeName: "",
-        activityKind: .running
-    )
+    private(set) var recording = ActivityRecording(routeId: UUID(), routeName: "", activityKind: .running)
     private(set) var elapsedSeconds: TimeInterval = 0
+    /// Distance actually covered (GPS), as opposed to progress along the route.
+    private(set) var gpsDistanceMeters: Double = 0
+    private(set) var elevationGainMeters: Double?
+    private(set) var currentSpeedMetersPerSecond: Double?
     private(set) var lastError: String?
     private(set) var gpsAcquisitionState: GPSAcquisitionState = .idle
     private(set) var previewCoordinate: GeoCoordinate?
-
-    private var displayCoordinateSmoother = DisplayCoordinateSmoother()
+    /// The recorded track, thinned for drawing (every fix would be thousands of points).
+    private(set) var displayTrack: [GeoCoordinate] = []
+    private(set) var rejoinGuidance: RejoinGuidance?
+    private(set) var elevationProfile: RouteElevationProfile?
+    private(set) var preferredStartPage: BatteryPreferredStartPage?
 
     var displayCoordinate: GeoCoordinate? {
         navigationSnapshot?.currentCoordinate ?? previewCoordinate
     }
 
+    /// Direction of travel while moving; nil when standing still.
+    var courseDegrees: Double? {
+        guard let sample = locationService.lastSample,
+              let course = sample.courseDegrees,
+              (sample.speedMetersPerSecond ?? 0) > 0.7 else { return nil }
+        return course
+    }
+
     var showsWeakGPSIndicator: Bool {
         switch gpsAcquisitionState {
-        case .warmingUp, .acquiring:
-            return true
-        case .idle, .ready:
-            return false
+        case .warmingUp, .acquiring: true
+        case .idle, .ready: false
         }
     }
 
     var gpsStatusLabel: String? {
-        switch gpsAcquisitionState {
-        case .idle, .ready:
-            return nil
-        case .warmingUp, .acquiring:
-            return "Acquiring GPS…"
-        }
+        showsWeakGPSIndicator ? "Acquiring GPS…" : nil
     }
 
     static let upcomingCueDisplayDistanceMeters = 500.0
@@ -57,6 +123,7 @@ final class ActiveRouteViewModel {
     var upcomingCueDisplay: (cue: RouteCue, distanceMeters: Double, isOffRoute: Bool)? {
         guard let snapshot = navigationSnapshot,
               let cue = snapshot.nextCue,
+              cue.kind != .finish,
               let distance = snapshot.distanceToNextCueMeters,
               distance <= Self.upcomingCueDisplayDistanceMeters else {
             return nil
@@ -66,22 +133,25 @@ final class ActiveRouteViewModel {
 
     let locationService = LocationTrackingService()
     let workoutService = WorkoutService()
+    let displayUpdateCoordinator = DisplayUpdateCoordinator()
 
     private var navigationEngine: RouteNavigationEngine?
     private var timer: Timer?
+    private var clock = ActivityClock()
+    private var liveStats = LiveTrackStatistics()
+    private var speedEstimator = SpeedEstimator()
+    private var alertTracker = NavigationAlertTracker()
     private var activeOffRouteEvent: OffRouteEvent?
-    private var lastElevationMeters: Double?
-    private var heartRateSamples: [Double] = []
-    private var lastNotifiedOffRouteLevel: RouteNotificationService.OffRouteLevel = .none
-    private var lastNotifiedCueID: UUID?
     private var lastPersistenceAt: Date = .distantPast
     private var isWarmingUpGPS = false
     private var warmupActivityKind: ActivityKind = .running
     private var currentBatteryMode: BatteryMode = .normal
-    private var currentBatteryPolicy: BatteryModePolicy = BatteryModePolicy(mode: .normal)
+    private var currentBatteryPolicy = BatteryModePolicy(mode: .normal)
     private var locationQualityFilter = LocationQualityFilter()
-    let displayUpdateCoordinator = DisplayUpdateCoordinator()
-    private(set) var preferredStartPage: BatteryPreferredStartPage?
+    private var displayCoordinateSmoother = DisplayCoordinateSmoother()
+
+    /// Spacing of the drawn track; finer detail is invisible on a watch map.
+    private static let displayTrackSpacingMeters = 4.0
 
     var isActive: Bool { phase == .active || phase == .paused || phase == .summary }
     var isPaused: Bool { phase == .paused }
@@ -95,10 +165,18 @@ final class ActiveRouteViewModel {
     }
 
     var averageSpeedMetersPerSecond: Double? {
-        guard elapsedSeconds > 0 else { return nil }
-        let distance = recording.totalDistanceMeters
-        guard distance > 0 else { return nil }
-        return distance / elapsedSeconds
+        ActivityTrackStatistics.averageSpeedMetersPerSecond(
+            gpsDistanceMeters: gpsDistanceMeters,
+            elapsedSeconds: elapsedSeconds
+        )
+    }
+
+    var averageHeartRateBPM: Double? {
+        if let fromHealth = workoutService.averageHeartRateBPM {
+            return fromHealth
+        }
+        let values = recording.trackPoints.compactMap(\.heartRateBPM)
+        return values.isEmpty ? nil : values.reduce(0, +) / Double(values.count)
     }
 
     init() {
@@ -107,104 +185,298 @@ final class ActiveRouteViewModel {
         }
     }
 
+    // MARK: - Lifecycle
+
     func restoreIfNeeded(from routeStore: WatchRouteStore, preferences: WatchPreferences) async -> Bool {
         guard phase == .idle,
               let persisted = ActiveActivityPersistence.load(),
-              persisted.phase == "active" || persisted.phase == "paused",
+              ["active", "paused", "summary"].contains(persisted.phase),
               let route = routeStore.route(with: persisted.routeId) else {
             return false
         }
 
-        routePackage = route
-        activityKind = persisted.activityKind
-        recording = persisted.recording
-        elapsedSeconds = persisted.elapsedSeconds
+        prepare(route: route, activityKind: persisted.activityKind)
+        var restored = persisted.recording
+        if restored.plannedRoutePoints == nil {
+            restored.plannedRoutePoints = route.route
+        }
+        recording = restored
+        clock = persisted.resolvedClock
+        elapsedSeconds = clock.elapsed()
+        liveStats = LiveTrackStatistics(rebuildingFrom: recording.trackPoints)
+        gpsDistanceMeters = liveStats.distanceMeters
+        elevationGainMeters = liveStats.elevationGainMeters
+        displayTrack = Self.thinnedTrack(recording.trackPoints.map(\.coordinate))
 
         let engine = RouteNavigationEngine(routePackage: route)
         engine.restoreState(persisted.engineState)
         navigationEngine = engine
-        displayCoordinateSmoother.reset()
 
-        if let lastPoint = recording.trackPoints.last {
-            let coordinate = GeoCoordinate(latitude: lastPoint.latitude, longitude: lastPoint.longitude)
-            if let update = engine.update(
-                latitude: lastPoint.latitude,
-                longitude: lastPoint.longitude,
-                horizontalAccuracyMeters: lastPoint.horizontalAccuracyMeters,
-                speedMetersPerSecond: lastPoint.speedMetersPerSecond
-            ) {
-                navigationSnapshot = engine.makeSnapshot(
-                    routeId: route.id,
-                    coordinate: coordinate,
-                    speed: lastPoint.speedMetersPerSecond,
-                    update: update
-                )
-            }
-        }
-
-        locationService.applyBatteryPolicy(batteryPolicy(for: preferences))
-        locationService.requestAuthorization()
-        applyBatterySettings(from: preferences)
-
-        if let lastPoint = recording.trackPoints.last {
-            locationQualityFilter.reset(
-                startingStabilized: true,
-                seed: qualityInput(from: lastPoint)
-            )
+        if let lastPoint = recording.trackPoints.last,
+           let update = engine.previewUpdate(
+               latitude: lastPoint.latitude,
+               longitude: lastPoint.longitude,
+               horizontalAccuracyMeters: lastPoint.horizontalAccuracyMeters,
+               speedMetersPerSecond: nil
+           ) {
+            navigationSnapshot = engine.makeSnapshot(routeId: route.id, coordinate: lastPoint.coordinate, speed: nil, update: update)
+            locationQualityFilter.reset(startingStabilized: true, seed: qualityInput(from: lastPoint))
             previewCoordinate = lastPoint.coordinate
             gpsAcquisitionState = .ready
         } else {
-            locationQualityFilter.reset()
-            previewCoordinate = nil
-            gpsAcquisitionState = .acquiring
             navigationSnapshot = engine.makeInitialSnapshot(routeId: route.id)
+            locationQualityFilter.reset()
+            gpsAcquisitionState = .acquiring
         }
 
-        phase = persisted.phase == "paused" ? .paused : .active
-        if phase == .active {
-            locationService.startTracking(distanceFilterMeters: currentBatteryPolicy.distanceFilterMeters)
-            startTimer()
+        applyBatterySettings(from: preferences)
+        locationService.requestAuthorization()
+
+        switch persisted.phase {
+        case "paused": phase = .paused
+        case "summary": phase = .summary
+        default: phase = .active
         }
+
+        if phase == .active {
+            clock.start()
+            locationService.startTracking(distanceFilterMeters: currentBatteryPolicy.distanceFilterMeters)
+        }
+        startTimer()
 
         if preferences.useHealthKitWorkouts {
-            await workoutService.requestAuthorization(for: activityKind)
-            await workoutService.startWorkout(activityKind: activityKind, startDate: recording.startedAt)
+            let recovered = await workoutService.recoverActiveWorkout(activityKind: activityKind, startDate: recording.startedAt)
+            if !recovered {
+                await workoutService.requestAuthorization(for: activityKind)
+                await workoutService.startWorkout(activityKind: activityKind, startDate: recording.startedAt)
+            }
+            if phase != .active {
+                workoutService.pauseWorkout()
+            }
         }
 
         publishWidgetState(forceTimelineReload: true)
         return true
     }
 
-    func beginGPSWarmup(preferences: WatchPreferences, activityKind: ActivityKind, browseWarmup: Bool = true) {
-        guard phase == .idle else { return }
+    func start(route: RoutePackage, activityKind: ActivityKind, preferences: WatchPreferences) async {
+        guard phase == .idle || phase == .finished else { return }
 
-        let policy = batteryPolicy(for: preferences)
-        guard browseWarmup, policy.enablesBrowseWarmup else { return }
+        // Permission sheets can stay up for minutes on first use; ask before anything is timestamped,
+        // or the Health workout would start earlier than the activity timer.
+        if preferences.useHealthKitWorkouts {
+            await workoutService.requestAuthorization(for: activityKind)
+        }
+        if preferences.navigationNotificationsEnabled {
+            _ = await RouteNotificationService.requestAuthorizationIfNeeded()
+        }
+        guard phase == .idle || phase == .finished else { return }
 
-        warmupActivityKind = activityKind
-        applyBatterySettings(from: preferences, browseWarmup: true)
-        locationQualityFilter.reset()
-        previewCoordinate = nil
-        gpsAcquisitionState = .warmingUp
-        isWarmingUpGPS = true
+        prepare(route: route, activityKind: activityKind)
+        navigationEngine = RouteNavigationEngine(routePackage: route)
+        navigationSnapshot = navigationEngine?.makeInitialSnapshot(routeId: route.id)
+        recording = ActivityRecording(
+            routeId: route.id,
+            routeName: route.name,
+            activityKind: activityKind,
+            plannedRoutePoints: route.route
+        )
+
+        isWarmingUpGPS = false
+        applyBatterySettings(from: preferences)
+
+        if gpsAcquisitionState == .ready, let lastSample = locationService.lastSample {
+            locationQualityFilter.reset(startingStabilized: true, seed: qualityInput(from: lastSample))
+            previewCoordinate = GeoCoordinate(latitude: lastSample.coordinate.latitude, longitude: lastSample.coordinate.longitude)
+        } else {
+            locationQualityFilter.reset()
+            previewCoordinate = nil
+            gpsAcquisitionState = .acquiring
+        }
 
         locationService.applyBatteryPolicy(currentBatteryPolicy)
         locationService.requestAuthorization()
         if !locationService.isTracking {
             locationService.startTracking(distanceFilterMeters: currentBatteryPolicy.distanceFilterMeters)
         }
+
+        if preferences.useHealthKitWorkouts {
+            await workoutService.startWorkout(activityKind: activityKind, startDate: recording.startedAt)
+        }
+
+        clock.start(at: recording.startedAt)
+        startTimer()
+        phase = .active
+        preferredStartPage = currentBatteryPolicy.preferredStartPage
+        publishWidgetState(forceTimelineReload: true)
+        persistActivity()
+    }
+
+    private func prepare(route: RoutePackage, activityKind: ActivityKind) {
+        routePackage = route
+        self.activityKind = activityKind
+        elevationProfile = RouteElevationProfile(route: route)
+        clock = ActivityClock()
+        elapsedSeconds = 0
+        liveStats = LiveTrackStatistics()
+        gpsDistanceMeters = 0
+        elevationGainMeters = nil
+        currentSpeedMetersPerSecond = nil
+        speedEstimator.reset()
+        alertTracker.reset()
+        displayTrack = []
+        rejoinGuidance = nil
+        activeOffRouteEvent = nil
+        lastError = nil
+        displayCoordinateSmoother.reset()
+        displayUpdateCoordinator.reset()
+    }
+
+    func pause() {
+        guard phase == .active else { return }
+        phase = .paused
+        clock.pause()
+        elapsedSeconds = clock.elapsed()
+        currentSpeedMetersPerSecond = nil
+        locationService.stopTracking()
+        workoutService.pauseWorkout()
+        publishWidgetState(forceTimelineReload: true)
+        persistActivity()
+    }
+
+    func resume(preferences: WatchPreferences) {
+        guard phase == .paused else { return }
+        phase = .active
+        clock.start()
+        speedEstimator.reset()
+        applyBatterySettings(from: preferences)
+        locationService.startTracking(distanceFilterMeters: currentBatteryPolicy.distanceFilterMeters)
+        gpsAcquisitionState = locationQualityFilter.hasStabilized ? .ready : .acquiring
+        workoutService.resumeWorkout()
+        publishWidgetState(forceTimelineReload: true)
+        persistActivity()
+    }
+
+    func togglePauseResume(preferences: WatchPreferences) {
+        if phase == .active {
+            pause()
+        } else if phase == .paused {
+            resume(preferences: preferences)
+        }
+    }
+
+    func prepareSummary(preferences: WatchPreferences) {
+        guard phase == .active || phase == .paused else { return }
+        clock.pause()
+        elapsedSeconds = clock.elapsed()
+        locationService.stopTracking()
+        workoutService.pauseWorkout()
+        recording.elapsedSeconds = elapsedSeconds
+        recording.averageHeartRateBPM = averageHeartRateBPM
+        phase = .summary
+        persistActivity()
+    }
+
+    func cancelSummary() {
+        guard phase == .summary else { return }
+        phase = .paused
+        persistActivity()
+        publishWidgetState()
+    }
+
+    func commitFinish(
+        preferences: WatchPreferences,
+        connectivity: WatchConnectivityManager,
+        activityStore: WatchActivityStore
+    ) async {
+        guard phase == .summary else { return }
+
+        let endDate = Date()
+        var finished = recording
+        finished.endedAt = endDate
+        finished.elapsedSeconds = elapsedSeconds
+        finished.averageHeartRateBPM = averageHeartRateBPM
+        finished.elevationGainMeters = elevationGainMeters
+        finished.title = ActivityNaming.title(
+            startedAt: finished.startedAt,
+            activityKind: activityKind,
+            routeName: finished.routeName
+        )
+
+        if workoutService.isSessionActive {
+            await workoutService.finishWorkout(
+                endDate: endDate,
+                title: finished.displayTitle,
+                activityId: finished.id,
+                gpsDistanceMeters: gpsDistanceMeters
+            )
+        }
+
+        recording = finished
+        let distance = gpsDistanceMeters
+        tearDown(phase: .finished)
+
+        try? await activityStore.save(finished)
+        await RouteNotificationService.notifyActivityComplete(
+            activityTitle: finished.displayTitle,
+            distanceMeters: distance,
+            elapsedSeconds: finished.elapsedSeconds
+        )
+        await connectivity.sendActivityRecording(finished)
+    }
+
+    func discardActivity() {
+        if workoutService.isSessionActive {
+            Task { await workoutService.discardWorkout() }
+        }
+        tearDown(phase: .idle)
+    }
+
+    private func tearDown(phase: Phase) {
+        stopTimer()
+        locationService.stopTracking()
+        self.phase = phase
+        routePackage = nil
+        navigationEngine = nil
+        navigationSnapshot = nil
+        elevationProfile = nil
+        displayTrack = []
+        rejoinGuidance = nil
+        previewCoordinate = nil
+        gpsAcquisitionState = .idle
+        isWarmingUpGPS = false
+        currentSpeedMetersPerSecond = nil
+        locationQualityFilter.reset()
+        displayCoordinateSmoother.reset()
+        displayUpdateCoordinator.reset()
+        ActiveActivityPersistence.clear()
+        WatchWidgetStateWriter.clear()
+    }
+
+    // MARK: - GPS warm-up
+
+    func beginGPSWarmup(preferences: WatchPreferences, activityKind: ActivityKind, browseWarmup: Bool = true) {
+        guard phase == .idle else { return }
+        let policy = batteryPolicy(for: preferences)
+        guard browseWarmup, policy.enablesBrowseWarmup else { return }
+
+        warmupActivityKind = activityKind
+        applyBatterySettings(from: preferences, browseWarmup: true)
+        startWarmupTracking()
     }
 
     func beginImminentStartWarmup(preferences: WatchPreferences, activityKind: ActivityKind) {
         guard phase == .idle else { return }
-
         warmupActivityKind = activityKind
         applyBatterySettings(from: preferences)
+        startWarmupTracking()
+    }
+
+    private func startWarmupTracking() {
         locationQualityFilter.reset()
         previewCoordinate = nil
         gpsAcquisitionState = .warmingUp
         isWarmingUpGPS = true
-
         locationService.applyBatteryPolicy(currentBatteryPolicy)
         locationService.requestAuthorization()
         if !locationService.isTracking {
@@ -243,222 +515,26 @@ final class ActiveRouteViewModel {
         preferredStartPage = nil
     }
 
-    func start(route: RoutePackage, activityKind: ActivityKind, preferences: WatchPreferences) async {
-        guard phase == .idle || phase == .finished else { return }
-
-        self.routePackage = route
-        self.activityKind = activityKind
-        self.navigationEngine = RouteNavigationEngine(routePackage: route)
-        displayCoordinateSmoother.reset()
-        navigationSnapshot = navigationEngine?.makeInitialSnapshot(routeId: route.id)
-        self.elapsedSeconds = 0
-        self.lastElevationMeters = nil
-        self.heartRateSamples = []
-        self.activeOffRouteEvent = nil
-        self.lastError = nil
-        self.lastNotifiedOffRouteLevel = .none
-        self.lastNotifiedCueID = nil
-
-        recording = ActivityRecording(
-            routeId: route.id,
-            routeName: route.name,
-            activityKind: activityKind,
-            plannedRoutePoints: route.route
-        )
-
-        isWarmingUpGPS = false
-        applyBatterySettings(from: preferences)
-        displayUpdateCoordinator.reset()
-
-        if gpsAcquisitionState == .ready, let lastSample = locationService.lastSample {
-            locationQualityFilter.reset(
-                startingStabilized: true,
-                seed: qualityInput(from: lastSample)
-            )
-            previewCoordinate = GeoCoordinate(
-                latitude: lastSample.coordinate.latitude,
-                longitude: lastSample.coordinate.longitude
-            )
-            gpsAcquisitionState = .ready
-        } else {
-            locationQualityFilter.reset()
-            previewCoordinate = nil
-            gpsAcquisitionState = .acquiring
-        }
-
-        locationService.applyBatteryPolicy(currentBatteryPolicy)
-        locationService.requestAuthorization()
-        if !locationService.isTracking {
-            locationService.startTracking(distanceFilterMeters: currentBatteryPolicy.distanceFilterMeters)
-        }
-
-        if preferences.useHealthKitWorkouts {
-            await workoutService.requestAuthorization(for: activityKind)
-            await workoutService.startWorkout(activityKind: activityKind, startDate: recording.startedAt)
-        }
-
-        if preferences.navigationNotificationsEnabled {
-            _ = await RouteNotificationService.requestAuthorizationIfNeeded()
-        }
-
-        startTimer()
-        phase = .active
-        preferredStartPage = currentBatteryPolicy.preferredStartPage
-        publishWidgetState(forceTimelineReload: true)
-        persistActivity()
-    }
-
-    func pause() {
-        guard phase == .active else { return }
-        phase = .paused
-        locationService.stopTracking()
-        workoutService.pauseWorkout()
-        stopTimer()
-        publishWidgetState(forceTimelineReload: true)
-        persistActivity()
-    }
-
-    func resume(preferences: WatchPreferences) {
-        guard phase == .paused else { return }
-        phase = .active
-        applyBatterySettings(from: preferences)
-        locationService.startTracking(distanceFilterMeters: currentBatteryPolicy.distanceFilterMeters)
-        gpsAcquisitionState = locationQualityFilter.hasStabilized ? .ready : .acquiring
-        workoutService.resumeWorkout()
-        startTimer()
-        publishWidgetState(forceTimelineReload: true)
-        persistActivity()
-    }
-
-    func togglePauseResume(preferences: WatchPreferences) {
-        if phase == .active {
-            pause()
-        } else if phase == .paused {
-            resume(preferences: preferences)
-        }
-    }
-
-    func prepareSummary(preferences: WatchPreferences) {
-        guard phase == .active || phase == .paused else { return }
-
-        stopTimer()
-        locationService.stopTracking()
-        workoutService.pauseWorkout()
-
-        recording.elapsedSeconds = elapsedSeconds
-        recording.averageHeartRateBPM = averageHeartRate
-        phase = .summary
-        persistActivity()
-    }
-
-    func cancelSummary() {
-        guard phase == .summary else { return }
-        phase = .paused
-        persistActivity()
-        publishWidgetState()
-    }
-
-    func commitFinish(
-        preferences: WatchPreferences,
-        connectivity: WatchConnectivityManager,
-        activityStore: WatchActivityStore
-    ) async {
-        guard phase == .summary else { return }
-
-        let endDate = Date()
-        var finishedRecording = recording
-        finishedRecording.endedAt = endDate
-        finishedRecording.elapsedSeconds = elapsedSeconds
-        finishedRecording.averageHeartRateBPM = averageHeartRate
-        finishedRecording.title = ActivityNaming.title(
-            startedAt: finishedRecording.startedAt,
-            activityKind: activityKind,
-            routeName: finishedRecording.routeName
-        )
-
-        if preferences.useHealthKitWorkouts {
-            _ = await workoutService.finishWorkout(
-                endDate: endDate,
-                routeName: finishedRecording.displayTitle,
-                activityId: finishedRecording.id,
-                totalDistanceMeters: finishedRecording.totalDistanceMeters,
-                activityKind: activityKind
-            )
-        }
-
-        recording = finishedRecording
-        phase = .finished
-        navigationSnapshot = nil
-        navigationEngine = nil
-        displayCoordinateSmoother.reset()
-        routePackage = nil
-        ActiveActivityPersistence.clear()
-        WatchWidgetStateWriter.clear()
-
-        try? await activityStore.save(finishedRecording)
-
-        await RouteNotificationService.notifyActivityComplete(
-            activityTitle: finishedRecording.displayTitle,
-            distanceMeters: finishedRecording.totalDistanceMeters,
-            elapsedSeconds: elapsedSeconds
-        )
-
-        await connectivity.sendActivityRecording(finishedRecording)
-    }
-
-    func discardActivity() {
-        stopTimer()
-        locationService.stopTracking()
-        Task {
-            switch workoutService.status {
-            case .running, .paused:
-                _ = await workoutService.finishWorkout(endDate: Date())
-            default:
-                break
-            }
-        }
-        phase = .idle
-        routePackage = nil
-        navigationEngine = nil
-        navigationSnapshot = nil
-        displayCoordinateSmoother.reset()
-        previewCoordinate = nil
-        gpsAcquisitionState = .idle
-        isWarmingUpGPS = false
-        locationQualityFilter.reset()
-        displayUpdateCoordinator.reset()
-        lastNotifiedOffRouteLevel = .none
-        lastNotifiedCueID = nil
-        ActiveActivityPersistence.clear()
-        WatchWidgetStateWriter.clear()
-    }
-
-    func cancel() {
-        discardActivity()
-    }
+    // MARK: - Location updates
 
     private func handleLocation(_ sample: LocationSample) {
         let input = qualityInput(from: sample)
 
         if phase == .idle {
             guard isWarmingUpGPS else { return }
-
             let outcome = locationQualityFilter.evaluate(
                 input: input,
                 activityKind: warmupActivityKind,
                 batteryMode: currentBatteryMode,
                 mode: .warmup
             )
-
             guard case .rejected = outcome else {
                 updatePreviewCoordinate(from: sample)
-                gpsAcquisitionState = locationQualityFilter.isWarmupReady(
-                    input: input,
-                    activityKind: warmupActivityKind
-                ) ? .ready : .warmingUp
+                gpsAcquisitionState = locationQualityFilter.isWarmupReady(input: input, activityKind: warmupActivityKind)
+                    ? .ready
+                    : .warmingUp
                 return
             }
-
             gpsAcquisitionState = .warmingUp
             return
         }
@@ -493,12 +569,8 @@ final class ActiveRouteViewModel {
             speedMetersPerSecond: sample.speedMetersPerSecond
         ) else { return }
 
-        let coordinate = GeoCoordinate(
-            latitude: sample.coordinate.latitude,
-            longitude: sample.coordinate.longitude
-        )
-
-        let displayCoordinate = displayCoordinateSmoother.coordinate(
+        let coordinate = GeoCoordinate(latitude: sample.coordinate.latitude, longitude: sample.coordinate.longitude)
+        let smoothed = displayCoordinateSmoother.coordinate(
             raw: coordinate,
             projected: update.projectedCoordinate,
             horizontalAccuracyMeters: sample.horizontalAccuracyMeters,
@@ -506,16 +578,50 @@ final class ActiveRouteViewModel {
             recordingAccuracyThresholdMeters: currentBatteryMode.gpsRecordingAccuracyMeters
         )
 
+        let point = TrackPoint(
+            timestamp: sample.timestamp,
+            latitude: coordinate.latitude,
+            longitude: coordinate.longitude,
+            altitudeMeters: sample.altitudeMeters,
+            horizontalAccuracyMeters: sample.horizontalAccuracyMeters,
+            speedMetersPerSecond: sample.speedMetersPerSecond,
+            heartRateBPM: workoutService.heartRateBPM,
+            snappedDistanceFromStartMeters: update.progressDistanceMeters,
+            offRouteDistanceMeters: update.offRouteDistanceMeters
+        )
+        record(point, update: update)
+
+        let previousTrackPoint = recording.trackPoints.dropLast().last
+        if let speed = sample.speedMetersPerSecond {
+            speedEstimator.add(speedMetersPerSecond: speed, at: sample.timestamp)
+        } else if let previousTrackPoint {
+            let dt = sample.timestamp.timeIntervalSince(previousTrackPoint.timestamp)
+            if dt > 0 {
+                speedEstimator.add(
+                    speedMetersPerSecond: MapMath.haversineMeters(from: previousTrackPoint.coordinate, to: coordinate) / dt,
+                    at: sample.timestamp
+                )
+            }
+        }
+        currentSpeedMetersPerSecond = speedEstimator.current(at: sample.timestamp)
+
         let snapshot = engine.makeSnapshot(
             routeId: route.id,
-            coordinate: displayCoordinate,
-            speed: sample.speedMetersPerSecond,
+            coordinate: smoothed,
+            speed: currentSpeedMetersPerSecond,
             update: update
         )
         navigationSnapshot = snapshot
 
+        rejoinGuidance = update.isOffRoute
+            ? RejoinGuidance(
+                distanceMeters: update.offRouteDistanceMeters,
+                bearingDegrees: MapMath.bearingDegrees(from: coordinate, to: update.projectedCoordinate),
+                courseDegrees: courseDegrees
+            )
+            : nil
+
         updateOffRouteEvents(update: update, coordinate: coordinate)
-        appendTrackPoint(sample: sample, update: update)
 
         if workoutService.status == .running {
             let location = CLLocation(
@@ -527,65 +633,37 @@ final class ActiveRouteViewModel {
                 speed: sample.speedMetersPerSecond ?? -1,
                 timestamp: sample.timestamp
             )
-            Task {
-                await workoutService.insertRouteLocation(location)
-            }
+            Task { await workoutService.insertRouteLocation(location) }
         }
 
-        if let heartRate = workoutService.heartRateBPM {
-            heartRateSamples.append(heartRate)
+        for alert in alertTracker.alerts(for: snapshot, activity: activityKind, speedMetersPerSecond: currentSpeedMetersPerSecond) {
+            RouteNotificationService.deliver(alert)
         }
 
         publishWidgetState()
-        evaluateNavigationNotifications(snapshot: snapshot)
         persistActivityIfNeeded()
     }
 
-    private func batteryPolicy(for preferences: WatchPreferences) -> BatteryModePolicy {
-        BatteryModePolicy.policy(userMode: preferences.batteryMode)
-    }
-
-    private func appendTrackPoint(sample: LocationSample, update: RouteNavigationUpdate) {
-        var elevationGain = recording.elevationGainMeters ?? 0
-        if let altitude = sample.altitudeMeters, let last = lastElevationMeters {
-            let delta = altitude - last
-            if delta > 0 { elevationGain += delta }
-        }
-        if let altitude = sample.altitudeMeters {
-            lastElevationMeters = altitude
-        }
-
-        let point = TrackPoint(
-            timestamp: sample.timestamp,
-            latitude: sample.coordinate.latitude,
-            longitude: sample.coordinate.longitude,
-            altitudeMeters: sample.altitudeMeters,
-            horizontalAccuracyMeters: sample.horizontalAccuracyMeters,
-            speedMetersPerSecond: sample.speedMetersPerSecond,
-            heartRateBPM: workoutService.heartRateBPM,
-            snappedDistanceFromStartMeters: update.progressDistanceMeters,
-            offRouteDistanceMeters: update.offRouteDistanceMeters
-        )
-
+    private func record(_ point: TrackPoint, update: RouteNavigationUpdate) {
         recording.trackPoints.append(point)
+        liveStats.add(point)
+        gpsDistanceMeters = liveStats.distanceMeters
+        elevationGainMeters = liveStats.elevationGainMeters
+
         recording.totalDistanceMeters = update.progressDistanceMeters
-        recording.elapsedSeconds = elapsedSeconds
-        recording.elevationGainMeters = elevationGain
-        recording.averageHeartRateBPM = averageHeartRate
+        recording.elevationGainMeters = elevationGainMeters
+        recording.elapsedSeconds = clock.elapsed()
+
+        if let last = displayTrack.last,
+           MapMath.haversineMeters(from: last, to: point.coordinate) < Self.displayTrackSpacingMeters {
+            return
+        }
+        displayTrack.append(point.coordinate)
     }
 
     private func updateOffRouteEvents(update: RouteNavigationUpdate, coordinate: GeoCoordinate) {
         if update.isOffRoute {
-            if activeOffRouteEvent == nil {
-                activeOffRouteEvent = OffRouteEvent(
-                    id: UUID(),
-                    startedAt: Date(),
-                    endedAt: nil,
-                    maxDistanceMeters: update.offRouteDistanceMeters,
-                    coordinate: coordinate
-                )
-                recording.offRouteEvents.append(activeOffRouteEvent!)
-            } else if let event = activeOffRouteEvent {
+            if let event = activeOffRouteEvent {
                 let updated = OffRouteEvent(
                     id: event.id,
                     startedAt: event.startedAt,
@@ -597,6 +675,14 @@ final class ActiveRouteViewModel {
                 if let index = recording.offRouteEvents.firstIndex(where: { $0.id == event.id }) {
                     recording.offRouteEvents[index] = updated
                 }
+            } else {
+                let event = OffRouteEvent(
+                    startedAt: Date(),
+                    maxDistanceMeters: update.offRouteDistanceMeters,
+                    coordinate: coordinate
+                )
+                activeOffRouteEvent = event
+                recording.offRouteEvents.append(event)
             }
         } else if let event = activeOffRouteEvent {
             let closed = OffRouteEvent(
@@ -613,20 +699,28 @@ final class ActiveRouteViewModel {
         }
     }
 
-    private var averageHeartRate: Double? {
-        guard !heartRateSamples.isEmpty else { return nil }
-        return heartRateSamples.reduce(0, +) / Double(heartRateSamples.count)
-    }
+    // MARK: - Timer
 
+    /// Drives the UI once per second; time itself comes from the wall-clock `ActivityClock`.
     private func startTimer() {
         stopTimer()
-        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             Task { @MainActor in
-                guard let self, self.phase == .active else { return }
-                self.elapsedSeconds += 1
-                self.recording.elapsedSeconds = self.elapsedSeconds
-                self.publishWidgetState()
+                self?.tick()
             }
+        }
+        timer.tolerance = 0.2
+        RunLoop.main.add(timer, forMode: .common)
+        self.timer = timer
+    }
+
+    private func tick() {
+        let now = Date()
+        elapsedSeconds = clock.elapsed(at: now)
+        if phase == .active {
+            recording.elapsedSeconds = elapsedSeconds
+            currentSpeedMetersPerSecond = speedEstimator.current(at: now)
+            publishWidgetState()
         }
     }
 
@@ -635,73 +729,61 @@ final class ActiveRouteViewModel {
         timer = nil
     }
 
+    // MARK: - Persistence & widget
+
     private func publishWidgetState(forceTimelineReload: Bool = false) {
         guard let route = routePackage, let snapshot = navigationSnapshot else { return }
-        WatchWidgetStateWriter.writeSnapshot(
-            snapshot,
-            routeName: route.name,
-            elapsedSeconds: elapsedSeconds,
-            isPaused: isPaused,
+        WatchWidgetStateWriter.write(
+            WatchActivityWidgetPayload(
+                routeName: route.name,
+                progressFraction: progressFraction,
+                distanceRemainingMeters: snapshot.distanceRemainingMeters,
+                elapsedSeconds: elapsedSeconds,
+                isPaused: phase != .active,
+                isOffRoute: snapshot.isOffRoute,
+                updatedAt: Date(),
+                timerStartDate: phase == .active ? Date().addingTimeInterval(-elapsedSeconds) : nil
+            ),
             minReloadInterval: currentBatteryPolicy.widgetReloadMinInterval,
             forceTimelineReload: forceTimelineReload
         )
     }
 
     private func persistActivityIfNeeded() {
-        let now = Date()
-        guard now.timeIntervalSince(lastPersistenceAt) >= currentBatteryPolicy.persistenceMinInterval else { return }
+        guard Date().timeIntervalSince(lastPersistenceAt) >= currentBatteryPolicy.persistenceMinInterval else { return }
         persistActivity()
     }
 
+    /// Saves just enough to resume after the app is terminated. The planned route and the
+    /// engine's copies of the track are rebuilt on restore instead of being re-encoded here.
     private func persistActivity() {
         guard let route = routePackage, let engine = navigationEngine else { return }
-        guard phase == .active || phase == .paused || phase == .summary else { return }
-
-        let phaseKey: String = switch phase {
-        case .active: "active"
-        case .paused: "paused"
-        case .summary: "summary"
-        default: "idle"
+        let phaseKey: String
+        switch phase {
+        case .active: phaseKey = "active"
+        case .paused: phaseKey = "paused"
+        case .summary: phaseKey = "summary"
+        default: return
         }
 
-        let snapshot = PersistedActiveActivity(
+        var slim = recording
+        slim.plannedRoutePoints = nil
+        ActiveActivityPersistence.save(PersistedActiveActivity(
             phase: phaseKey,
             routeId: route.id,
             activityKind: activityKind,
-            recording: recording,
-            elapsedSeconds: elapsedSeconds,
-            engineState: engine.exportState()
-        )
-        ActiveActivityPersistence.save(snapshot)
+            recording: slim,
+            elapsedSeconds: clock.elapsed(),
+            engineState: engine.exportState(includeTracks: false),
+            clock: clock
+        ))
         lastPersistenceAt = Date()
     }
 
-    private func evaluateNavigationNotifications(snapshot: NavigationSnapshot) {
-        guard WatchPreferences.shared.navigationNotificationsEnabled else { return }
+    // MARK: - Helpers
 
-        if snapshot.isCriticallyOffRoute && lastNotifiedOffRouteLevel != .critical {
-            lastNotifiedOffRouteLevel = .critical
-            Task {
-                await RouteNotificationService.notifyCriticalOffRoute(distanceMeters: snapshot.offRouteDistanceMeters)
-            }
-        } else if snapshot.isOffRoute && lastNotifiedOffRouteLevel == .none {
-            lastNotifiedOffRouteLevel = .warning
-            Task {
-                await RouteNotificationService.notifyOffRouteWarning(distanceMeters: snapshot.offRouteDistanceMeters)
-            }
-        } else if !snapshot.isOffRoute {
-            lastNotifiedOffRouteLevel = .none
-        }
-
-        if let cue = snapshot.nextCue,
-           RouteNotificationService.cueNotificationThresholdMet(distanceMeters: snapshot.distanceToNextCueMeters),
-           lastNotifiedCueID != cue.id,
-           let distance = snapshot.distanceToNextCueMeters {
-            lastNotifiedCueID = cue.id
-            Task {
-                await RouteNotificationService.notifyUpcomingCue(cue, distanceMeters: distance)
-            }
-        }
+    private func batteryPolicy(for preferences: WatchPreferences) -> BatteryModePolicy {
+        BatteryModePolicy.policy(userMode: preferences.batteryMode)
     }
 
     private func qualityInput(from sample: LocationSample) -> LocationQualityInput {
@@ -725,22 +807,11 @@ final class ActiveRouteViewModel {
     }
 
     private func updatePreviewCoordinate(from sample: LocationSample) {
-        guard MapMath.isValidCoordinate(
-            latitude: sample.coordinate.latitude,
-            longitude: sample.coordinate.longitude
-        ) else { return }
-
-        previewCoordinate = GeoCoordinate(
-            latitude: sample.coordinate.latitude,
-            longitude: sample.coordinate.longitude
-        )
+        guard MapMath.isValidCoordinate(latitude: sample.coordinate.latitude, longitude: sample.coordinate.longitude) else { return }
+        previewCoordinate = GeoCoordinate(latitude: sample.coordinate.latitude, longitude: sample.coordinate.longitude)
     }
 
-    private func applyPreviewNavigation(
-        from sample: LocationSample,
-        route: RoutePackage,
-        engine: RouteNavigationEngine
-    ) {
+    private func applyPreviewNavigation(from sample: LocationSample, route: RoutePackage, engine: RouteNavigationEngine) {
         guard let update = engine.previewUpdate(
             latitude: sample.coordinate.latitude,
             longitude: sample.coordinate.longitude,
@@ -748,22 +819,26 @@ final class ActiveRouteViewModel {
             speedMetersPerSecond: sample.speedMetersPerSecond
         ) else { return }
 
-        let coordinate = GeoCoordinate(
-            latitude: sample.coordinate.latitude,
-            longitude: sample.coordinate.longitude
-        )
-        let displayCoordinate = displayCoordinateSmoother.coordinate(
+        let coordinate = GeoCoordinate(latitude: sample.coordinate.latitude, longitude: sample.coordinate.longitude)
+        let smoothed = displayCoordinateSmoother.coordinate(
             raw: coordinate,
             projected: update.projectedCoordinate,
             horizontalAccuracyMeters: sample.horizontalAccuracyMeters,
             isOffRoute: update.isOffRoute,
             recordingAccuracyThresholdMeters: currentBatteryMode.gpsRecordingAccuracyMeters
         )
-        navigationSnapshot = engine.makeSnapshot(
-            routeId: route.id,
-            coordinate: displayCoordinate,
-            speed: sample.speedMetersPerSecond,
-            update: update
-        )
+        navigationSnapshot = engine.makeSnapshot(routeId: route.id, coordinate: smoothed, speed: nil, update: update)
+    }
+
+    private static func thinnedTrack(_ coordinates: [GeoCoordinate]) -> [GeoCoordinate] {
+        var result: [GeoCoordinate] = []
+        result.reserveCapacity(coordinates.count / 2)
+        for coordinate in coordinates {
+            if let last = result.last, MapMath.haversineMeters(from: last, to: coordinate) < displayTrackSpacingMeters {
+                continue
+            }
+            result.append(coordinate)
+        }
+        return result
     }
 }

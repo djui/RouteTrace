@@ -2,95 +2,81 @@ import RouteTraceShared
 import SwiftUI
 
 struct AlwaysOnAware<Full: View, Dimmed: View>: View {
-  @Environment(\.isLuminanceReduced) private var isLuminanceReduced
-  @ViewBuilder let full: () -> Full
-  @ViewBuilder let dimmed: () -> Dimmed
+    @Environment(\.isLuminanceReduced) private var isLuminanceReduced
+    @ViewBuilder let full: () -> Full
+    @ViewBuilder let dimmed: () -> Dimmed
 
-  var body: some View {
-    if isLuminanceReduced {
-      dimmed()
-    } else {
-      full()
+    var body: some View {
+        if isLuminanceReduced {
+            dimmed()
+        } else {
+            full()
+        }
     }
-  }
 }
 
+/// Low-power view for Always On: the next instruction, distance left and a system-driven timer.
 struct ActiveRouteDimmedSummary: View {
-  @Bindable var viewModel: ActiveRouteViewModel
+    @Bindable var viewModel: ActiveRouteViewModel
 
-  var body: some View {
-    VStack(spacing: 8) {
-      if let snapshot = viewModel.navigationSnapshot, let cue = snapshot.nextCue {
-        Image(systemName: symbol(for: cue.kind))
-          .font(.title2)
-          .foregroundStyle(snapshot.isOffRoute ? .orange : .primary)
+    var body: some View {
+        VStack(spacing: 6) {
+            if let guidance = viewModel.rejoinGuidance {
+                Image(systemName: "location.slash")
+                    .font(.title3)
+                    .foregroundStyle(.orange)
+                Text("Route \(RouteFormatting.distance(guidance.distanceMeters)) \(guidance.compassDirection)")
+                    .font(.headline)
+                    .foregroundStyle(.orange)
+            } else if let snapshot = viewModel.navigationSnapshot, let cue = snapshot.nextCue {
+                Image(systemName: ActiveRouteMapOverlay.cueSymbol(for: cue.kind))
+                    .font(.title2)
+                if let distance = snapshot.distanceToNextCueMeters {
+                    Text(RouteFormatting.distance(distance))
+                        .font(.system(.title2, design: .rounded, weight: .semibold))
+                }
+                Text(cue.kind == .finish ? "Finish" : cue.instruction)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            } else {
+                Text(viewModel.routePackage?.name ?? "Route")
+                    .font(.headline)
+                    .lineLimit(1)
+            }
 
-        Text(cue.instruction)
-          .font(.headline)
-          .multilineTextAlignment(.center)
-          .lineLimit(2)
+            Spacer(minLength: 2)
 
-        if let distance = snapshot.distanceToNextCueMeters {
-          Text("in \(RouteFormatting.distance(distance))")
-            .font(.caption)
+            HStack {
+                Text(RouteFormatting.distance(viewModel.navigationSnapshot?.distanceRemainingMeters ?? 0))
+                Spacer()
+                elapsedText
+            }
+            .font(.system(.body, design: .rounded, weight: .semibold))
             .foregroundStyle(.secondary)
+            .monospacedDigit()
+
+            if viewModel.isPaused {
+                Label("Paused", systemImage: "pause.fill")
+                    .font(.caption2)
+                    .foregroundStyle(.orange)
+            }
         }
-      } else {
-        Text(viewModel.routePackage?.name ?? "Active Route")
-          .font(.headline)
-          .lineLimit(1)
-
-        Text("\(Int(viewModel.progressFraction * 100))%")
-          .font(.title3)
-      }
-
-      HStack {
-        Text(routeDistanceSummary)
-        Spacer()
-        Text(RouteFormatting.duration(viewModel.elapsedSeconds))
-      }
-      .font(.caption)
-      .foregroundStyle(.secondary)
-
-      if viewModel.navigationSnapshot?.isOffRoute == true {
-        Label("Off route", systemImage: "location.slash")
-          .font(.caption2)
-          .foregroundStyle(.orange)
-      } else if viewModel.isPaused {
-        Label("Paused", systemImage: "pause.fill")
-          .font(.caption2)
-          .foregroundStyle(.secondary)
-      }
+        .padding(.horizontal, 12)
+        .padding(.top, 24)
+        .padding(.bottom, 16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .routeScreenBackground()
     }
-    .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .padding()
-    .routeScreenBackground()
-  }
 
-  private var routeDistanceSummary: String {
-    if let snapshot = viewModel.navigationSnapshot {
-      let covered = snapshot.progressDistanceMeters
-      let total = covered + snapshot.distanceRemainingMeters
-      if total > 0 {
-        return "\(RouteFormatting.distance(covered)) / \(RouteFormatting.distance(total))"
-      }
-      return RouteFormatting.distance(covered)
+    /// Updated by the system while dimmed, without waking the app every second.
+    @ViewBuilder
+    private var elapsedText: some View {
+        if viewModel.isPaused || viewModel.phase != .active {
+            Text(RouteFormatting.duration(viewModel.elapsedSeconds))
+        } else {
+            let start = Date().addingTimeInterval(-viewModel.elapsedSeconds)
+            Text(timerInterval: start...Date.distantFuture, countsDown: false)
+        }
     }
-    return RouteFormatting.distance(viewModel.recording.totalDistanceMeters)
-  }
-
-  private func symbol(for kind: RouteCueKind) -> String {
-    switch kind {
-    case .start: "flag.fill"
-    case .finish: "flag.checkered"
-    case .continue: "arrow.up"
-    case .slightLeft: "arrow.up.left"
-    case .slightRight: "arrow.up.right"
-    case .turnLeft: "arrow.turn.up.left"
-    case .turnRight: "arrow.turn.up.right"
-    case .sharpLeft: "arrow.turn.left.up"
-    case .sharpRight: "arrow.turn.right.up"
-    case .uTurn: "arrow.uturn.up"
-    }
-  }
 }

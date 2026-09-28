@@ -248,6 +248,14 @@ public struct RoutePackage: Codable, Sendable, Identifiable {
         route.contains { $0.elevationMeters != nil }
     }
 
+    /// Length of the simplified navigation polyline that progress is measured along.
+    ///
+    /// Slightly shorter than `distanceMeters` (measured on the full-resolution GPX), so remaining
+    /// distance must use this value to reach zero at the finish.
+    public var navigationDistanceMeters: Double {
+        route.last?.distanceFromStartMeters ?? distanceMeters
+    }
+
     /// Returns true when an on-disk copy can be skipped during Watch route materialization.
     public func hasSameWatchMaterializedContent(as other: RoutePackage) -> Bool {
         importedAt == other.importedAt
@@ -303,6 +311,8 @@ public enum TransferState: String, Codable, Sendable {
     case transferring
     case installed
     case failed
+    /// Deleted on the watch by the user; not re-sent automatically.
+    case removedFromWatch
 }
 
 public struct RouteTransferMetadata: Codable, Sendable {
@@ -317,7 +327,7 @@ public struct RouteTransferMetadata: Codable, Sendable {
     public let schemaVersion: Int
 
     public init(routePackage: RoutePackage) {
-        self.type = "routePackage"
+        self.type = WatchMessageType.routePackage
         self.routeId = routePackage.id
         self.name = routePackage.name
         self.distanceMeters = routePackage.distanceMeters

@@ -57,6 +57,7 @@ struct ActiveRouteWidgetView: View {
                 rectangularView
             }
         }
+        .containerBackground(for: .widget) { Color.clear }
         .widgetURL(URL(string: "routetrace://active"))
     }
 
@@ -77,12 +78,14 @@ struct ActiveRouteWidgetView: View {
                         }
                     }
                     ProgressView(value: payload.progressFraction)
+                        .tint(payload.isOffRoute ? .orange : .blue)
                     HStack {
-                        Text(RouteFormatting.distance(payload.distanceRemainingMeters))
+                        Text("\(RouteFormatting.distance(payload.distanceRemainingMeters)) left")
                         Spacer()
-                        Text(RouteFormatting.duration(payload.elapsedSeconds))
+                        elapsedText(payload)
                     }
                     .font(.caption2)
+                    .monospacedDigit()
                 } else {
                     Text("No active route")
                         .font(.caption)
@@ -128,11 +131,23 @@ struct ActiveRouteWidgetView: View {
         }
     }
 
+    /// A running timer renders itself from the start date, so it stays current between
+    /// timeline reloads.
+    @ViewBuilder
+    private func elapsedText(_ payload: WatchActivityWidgetPayload) -> some View {
+        if let start = payload.timerStartDate, !payload.isPaused {
+            Text(timerInterval: start...Date.distantFuture, countsDown: false)
+                .multilineTextAlignment(.trailing)
+        } else {
+            Text(RouteFormatting.duration(payload.elapsedSeconds))
+        }
+    }
+
     private var inlineView: some View {
         if let payload = entry.payload {
             Text("\(payload.routeName) · \(Int(payload.progressFraction * 100))% · \(RouteFormatting.distance(payload.distanceRemainingMeters)) left")
         } else {
-            Text("RouteTrace idle")
+            Text("No active route")
         }
     }
 }

@@ -49,6 +49,11 @@ final class LocationTrackingService: NSObject {
         }
 
         manager.distanceFilter = distanceFilterMeters
+        // Keeps fixes coming with the wrist down even when no HealthKit workout session runs.
+        // CoreLocation raises an exception unless the `location` background mode is declared.
+        if Self.declaresBackgroundLocation {
+            manager.allowsBackgroundLocationUpdates = true
+        }
         manager.startUpdatingLocation()
         isTracking = true
         lastError = nil
@@ -56,8 +61,16 @@ final class LocationTrackingService: NSObject {
 
     func stopTracking() {
         manager.stopUpdatingLocation()
+        if Self.declaresBackgroundLocation {
+            manager.allowsBackgroundLocationUpdates = false
+        }
         isTracking = false
     }
+
+    private static let declaresBackgroundLocation: Bool = {
+        let modes = Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String] ?? []
+        return modes.contains("location")
+    }()
 
     func applyBatteryPolicy(_ policy: BatteryModePolicy) {
         switch policy.mode {
@@ -85,19 +98,27 @@ extension LocationTrackingService: CLLocationManagerDelegate {
     }
 
     nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        guard let location = locations.last else { return }
-        let sample = LocationSample(
-            coordinate: location.coordinate,
-            altitudeMeters: location.verticalAccuracy >= 0 ? location.altitude : nil,
-            horizontalAccuracyMeters: max(location.horizontalAccuracy, 0),
-            speedMetersPerSecond: location.speed >= 0 ? location.speed : nil,
-            courseDegrees: location.course >= 0 ? location.course : nil,
-            timestamp: location.timestamp
-        )
+        // Fixes arrive batched while the screen is off; using only the last one cut corners
+        // off the recorded track. Negative accuracy marks an invalid fix.
+        let samples = locations
+            .filter { $0.horizontalAccuracy >= 0 }
+            .map { location in
+                LocationSample(
+                    coordinate: location.coordinate,
+                    altitudeMeters: location.verticalAccuracy >= 0 ? location.altitude : nil,
+                    horizontalAccuracyMeters: location.horizontalAccuracy,
+                    speedMetersPerSecond: location.speed >= 0 ? location.speed : nil,
+                    courseDegrees: location.course >= 0 ? location.course : nil,
+                    timestamp: location.timestamp
+                )
+            }
+        guard !samples.isEmpty else { return }
 
         Task { @MainActor in
-            lastSample = sample
-            onLocationUpdate?(sample)
+            for sample in samples {
+                lastSample = sample
+                onLocationUpdate?(sample)
+            }
         }
     }
 

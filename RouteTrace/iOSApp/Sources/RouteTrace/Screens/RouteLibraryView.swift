@@ -3,7 +3,6 @@ import SwiftData
 import RouteTraceShared
 
 struct RouteLibraryView: View {
-    @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var routeStore: RouteStore
     @EnvironmentObject private var incomingGPX: IncomingGPXCoordinator
     #if canImport(WatchConnectivity)
@@ -12,219 +11,286 @@ struct RouteLibraryView: View {
 
     @Query(sort: \RouteEntity.importedAt, order: .reverse) private var routes: [RouteEntity]
 
-    @State private var isShowingImport = false
+    @State private var path = NavigationPath()
+    @State private var searchText = ""
+    @State private var isFileImporterPresented = false
+    @State private var importItem: ImportItem?
+    @State private var isLoadingImport = false
     @State private var isShowingSettings = false
     @State private var errorMessage: String?
-    @State private var successMessage: String?
-    @State private var exportURL: URL?
-    @State private var isSharePresented = false
-    @State private var isExporting = false
-    @State private var sendingRouteID: UUID?
-    @State private var updatingActivityKindRouteID: UUID?
-    @State private var reversingDirectionRouteID: UUID?
-    @State private var showSourceGPXUnavailable = false
     @State private var routePendingRename: RouteEntity?
+    @State private var routePendingDelete: RouteEntity?
     @State private var editedRouteName = ""
-    @State private var isRenaming = false
+    @State private var busyRouteIDs: Set<UUID> = []
+    @State private var banner: BannerContent?
+
+    private var filteredRoutes: [RouteEntity] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return routes }
+        return routes.filter { $0.name.localizedStandardContains(query) }
+    }
+
+    private var showsWatchStatus: Bool {
+        #if canImport(WatchConnectivity)
+        connectivityManager.canTransferToWatch
+        #else
+        false
+        #endif
+    }
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if routes.isEmpty {
-                    ContentUnavailableView {
-                        Label("No Routes", systemImage: "point.bottomleft.forward.to.point.topright.scurvepath")
-                    } description: {
-                        Text("Import a GPX file to get started.")
+        NavigationStack(path: $path) {
+            content
+                .navigationTitle("Routes")
+                .toolbar { toolbarContent }
+                .navigationDestination(for: UUID.self) { routeID in
+                    if let route = routes.first(where: { $0.id == routeID }) {
+                        RouteDetailView(route: route)
+                    } else {
+                        ContentUnavailableView("Route Deleted", systemImage: "trash")
                     }
-                } else {
-                    List(routes) { route in
-                        RouteListRow(
+                }
+        }
+        .fileImporter(
+            isPresented: $isFileImporterPresented,
+            allowedContentTypes: [.gpx, .xml],
+            allowsMultipleSelection: false
+        ) { result in
+            switch result {
+            case .success(let urls):
+                if let url = urls.first {
+                    Task { await prepareImport(from: url) }
+                }
+            case .failure(let error):
+                errorMessage = error.localizedDescription
+            }
+        }
+        .sheet(item: $importItem) { item in
+            ImportRouteView(candidate: item.candidate) { entity in
+                importItem = nil
+                path.append(entity.id)
+            }
+        }
+        .sheet(isPresented: $isShowingSettings) {
+            SettingsView()
+        }
+        .alert("Couldn’t Complete Action", isPresented: Binding(
+            get: { errorMessage != nil },
+            set: { if !$0 { errorMessage = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? "")
+        }
+        .alert("Rename Route", isPresented: Binding(
+            get: { routePendingRename != nil },
+            set: { if !$0 { routePendingRename = nil } }
+        )) {
+            TextField("Route Name", text: $editedRouteName)
+                .textInputAutocapitalization(.words)
+            Button("Save") {
+                if let route = routePendingRename {
+                    rename(route, to: editedRouteName)
+                }
+            }
+            .disabled(editedRouteName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            Button("Cancel", role: .cancel) {}
+        }
+        .overlay {
+            if isLoadingImport {
+                ProgressView("Reading GPX…")
+                    .padding(24)
+                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            }
+        }
+        .transientBanner($banner)
+        .onChange(of: incomingGPX.pendingImport?.id) { _, _ in
+            if let url = incomingGPX.pendingImport?.url {
+                incomingGPX.clearPending()
+                Task { await prepareImport(from: url) }
+            }
+        }
+        .onChange(of: routeStore.offlineBuildFailure) { _, failure in
+            if let failure {
+                errorMessage = "Offline map for \(failure.routeName): \(failure.message)"
+                routeStore.offlineBuildFailure = nil
+            }
+        }
+        #if canImport(WatchConnectivity)
+        .onChange(of: connectivityManager.lastEvent) { _, event in
+            guard let event else { return }
+            banner = BannerContent(
+                message: event.message,
+                systemImage: event.kind == .failed ? "exclamationmark.triangle.fill" : "checkmark.circle.fill",
+                tint: event.kind == .failed ? .orange : .green
+            )
+        }
+        #endif
+        .task {
+            if let url = incomingGPX.pendingImport?.url {
+                incomingGPX.clearPending()
+                await prepareImport(from: url)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if routes.isEmpty {
+            ContentUnavailableView {
+                Label("No Routes Yet", systemImage: "point.bottomleft.forward.to.point.topright.scurvepath")
+            } description: {
+                Text("Import a GPX file from Komoot, Strava, Garmin or any route planner. RouteTrace sends it to your Apple Watch for turn-by-turn navigation.")
+            } actions: {
+                Button {
+                    isFileImporterPresented = true
+                } label: {
+                    Label("Import GPX File", systemImage: "square.and.arrow.down")
+                        .padding(.horizontal, 8)
+                }
+                .buttonStyle(.glassProminent)
+                .controlSize(.large)
+            }
+        } else {
+            List {
+                ForEach(filteredRoutes) { route in
+                    NavigationLink(value: route.id) {
+                        RouteRow(
                             route: route,
-                            routePackage: (try? routeStore.loadRoutePackage(for: route)),
-                            isExporting: isExporting,
-                            isSendingToWatch: sendingRouteID == route.id,
-                            isUpdatingActivityKind: updatingActivityKindRouteID == route.id,
-                            isReversingDirection: reversingDirectionRouteID == route.id,
-                            onActivityKindChange: { kind in
-                                Task { await updateActivityKind(for: route, to: kind) }
-                            },
-                            onReverseDirection: {
-                                Task { await reverseRouteDirection(for: route) }
-                            },
-                            onSendToWatch: sendToWatchAction(for: route),
-                            onRename: {
-                                routePendingRename = route
-                                editedRouteName = route.name
-                            },
-                            onShare: { shareRoute(route) },
-                            onDelete: { deleteRoute($0) }
+                            thumbnail: routeStore.thumbnailPoints(for: route),
+                            buildProgress: routeStore.offlineBuilds[route.id],
+                            isBusy: busyRouteIDs.contains(route.id),
+                            showsWatchStatus: showsWatchStatus
                         )
                     }
-                }
-            }
-            .overlay(alignment: .bottomTrailing) {
-                Button {
-                    isShowingImport = true
-                } label: {
-                    Image(systemName: "square.and.arrow.down")
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .frame(width: 56, height: 56)
-                        .background(Color.accentColor, in: Circle())
-                        .shadow(color: .black.opacity(0.2), radius: 4, y: 2)
-                }
-                .accessibilityLabel("Import")
-                .padding(.trailing, 20)
-                .padding(.bottom, 16)
-            }
-            .navigationTitle("Routes")
-            .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        isShowingSettings = true
-                    } label: {
-                        Image(systemName: "gearshape")
+                    .contextMenu {
+                        actionMenu(for: route)
+                    } preview: {
+                        RoutePreviewCard(route: route, thumbnail: routeStore.thumbnailPoints(for: route))
                     }
-                    .accessibilityLabel("Settings")
-                }
-            }
-            .sheet(isPresented: $isShowingSettings) {
-                SettingsView()
-            }
-            .navigationDestination(for: UUID.self) { routeID in
-                if let route = routes.first(where: { $0.id == routeID }) {
-                    RouteDetailView(route: route)
-                }
-            }
-            .sheet(isPresented: $isShowingImport) {
-                ImportRouteView(routeStore: routeStore, incomingGPX: incomingGPX)
-            }
-            .sheet(isPresented: $isSharePresented, onDismiss: { RouteActions.cleanupExport(at: exportURL) }) {
-                if let exportURL {
-                    ShareSheet(items: [exportURL])
-                }
-            }
-            .alert("Route Error", isPresented: Binding(
-                get: { errorMessage != nil },
-                set: { if !$0 { errorMessage = nil } }
-            )) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(errorMessage ?? "")
-            }
-            .alert("Sent to Watch", isPresented: Binding(
-                get: { successMessage != nil },
-                set: { if !$0 { successMessage = nil } }
-            )) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text(successMessage ?? "")
-            }
-            .alert("Activity Type Unavailable", isPresented: $showSourceGPXUnavailable) {
-                Button("OK", role: .cancel) {}
-            } message: {
-                Text("The original GPX file is not available for this route. Re-import the route to change its activity type.")
-            }
-            .alert("Rename Route", isPresented: Binding(
-                get: { routePendingRename != nil },
-                set: { if !$0 { routePendingRename = nil } }
-            )) {
-                TextField("Route Name", text: $editedRouteName)
-                    .textInputAutocapitalization(.words)
-                Button("Save") {
-                    if let route = routePendingRename {
-                        Task { await renameRoute(route) }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        Button {
+                            routePendingDelete = route
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                        .tint(.red)
                     }
+                    // Attached per row so the popover points at the route being deleted.
+                    .confirmationDialog(
+                        "Delete “\(route.name)”?",
+                        isPresented: deleteConfirmationBinding(for: route),
+                        titleVisibility: .visible
+                    ) {
+                        Button("Delete Route", role: .destructive) {
+                            delete(route)
+                        }
+                    } message: {
+                        Text("The route and its offline map are removed from this iPhone and your Apple Watch. Recorded activities are kept.")
+                    }
+                    #if canImport(WatchConnectivity)
+                    .swipeActions(edge: .leading) {
+                        if showsWatchStatus {
+                            Button {
+                                sendToWatch(route)
+                            } label: {
+                                Label("Send to Watch", systemImage: "applewatch.and.arrow.forward")
+                            }
+                            .tint(.green)
+                        }
+                    }
+                    #endif
                 }
-                .disabled(editedRouteName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isRenaming)
-                Button("Cancel", role: .cancel) {
-                    routePendingRename = nil
+            }
+            .listStyle(.insetGrouped)
+            .searchable(text: $searchText, prompt: "Search Routes")
+            .overlay {
+                if filteredRoutes.isEmpty {
+                    ContentUnavailableView.search(text: searchText)
                 }
-            } message: {
-                Text("Choose a name for this route.")
             }
-            #if canImport(WatchConnectivity)
-            .onAppear {
-                connectivityManager.refreshSessionState()
-            }
-            .onChange(of: connectivityManager.lastTransferSuccess) { _, message in
-                if let message { successMessage = message }
-            }
-            .onChange(of: connectivityManager.lastTransferError) { _, message in
-                if let message { errorMessage = message }
-            }
-            #endif
         }
     }
 
-    #if canImport(WatchConnectivity)
-    private func sendToWatchAction(for route: RouteEntity) -> (() -> Void)? {
-        { Task { await sendToWatch(route) } }
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            Button {
+                isShowingSettings = true
+            } label: {
+                Label("Settings", systemImage: "gearshape")
+            }
+        }
+        ToolbarItem(placement: .primaryAction) {
+            Button {
+                isFileImporterPresented = true
+            } label: {
+                Label("Import GPX", systemImage: "plus")
+            }
+            .disabled(isLoadingImport)
+        }
     }
-    #else
-    private func sendToWatchAction(for route: RouteEntity) -> (() -> Void)? { nil }
-    #endif
 
-    @MainActor
-    private func reverseRouteDirection(for route: RouteEntity) async {
-        reversingDirectionRouteID = route.id
-        defer { reversingDirectionRouteID = nil }
+    @ViewBuilder
+    private func actionMenu(for route: RouteEntity) -> some View {
+        #if canImport(WatchConnectivity)
+        let sendAction: (() -> Void)? = showsWatchStatus ? { sendToWatch(route) } : nil
+        #else
+        let sendAction: (() -> Void)? = nil
+        #endif
+        RouteActionMenuItems(
+            route: route,
+            isBusy: busyRouteIDs.contains(route.id),
+            onActivityKindChange: { kind in
+                perform(on: route) { try await routeStore.updateActivityHint(for: route, to: kind) }
+            },
+            onReverseDirection: {
+                perform(on: route) { try await routeStore.reverseRoute(for: route) }
+            },
+            onSendToWatch: sendAction,
+            onRename: {
+                editedRouteName = route.name
+                routePendingRename = route
+            },
+            onDelete: { routePendingDelete = route }
+        )
+    }
 
+    // MARK: - Actions
+
+    private func prepareImport(from url: URL) async {
+        isLoadingImport = true
+        defer { isLoadingImport = false }
         do {
-            _ = try await routeStore.reverseRoute(for: route)
+            let candidate = try await GPXImportCandidate.load(from: url)
+            importItem = ImportItem(candidate: candidate)
+        } catch {
+            errorMessage = "“\(url.lastPathComponent)” couldn’t be imported. \(error.localizedDescription)"
+        }
+    }
+
+    private func perform(on route: RouteEntity, _ action: @escaping () async throws -> Void) {
+        let routeID = route.id
+        busyRouteIDs.insert(routeID)
+        Task {
+            defer { busyRouteIDs.remove(routeID) }
+            do {
+                try await action()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func rename(_ route: RouteEntity, to name: String) {
+        do {
+            try routeStore.renameRoute(for: route, to: name)
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
-    @MainActor
-    private func updateActivityKind(for route: RouteEntity, to kind: ActivityKind) async {
-        guard RouteTracePaths.hasSourceGPX(for: route.id) else {
-            showSourceGPXUnavailable = true
-            return
-        }
-
-        guard kind != route.activityHint else { return }
-
-        updatingActivityKindRouteID = route.id
-        defer { updatingActivityKindRouteID = nil }
-
-        do {
-            _ = try await routeStore.updateActivityHint(for: route, to: kind)
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    #if canImport(WatchConnectivity)
-    @MainActor
-    private func sendToWatch(_ route: RouteEntity) async {
-        sendingRouteID = route.id
-        defer { sendingRouteID = nil }
-        do {
-            try connectivityManager.transferRouteToWatch(routeID: route.id)
-            successMessage = connectivityManager.lastTransferSuccess
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-    #endif
-
-    private func shareRoute(_ route: RouteEntity) {
-        isExporting = true
-        defer { isExporting = false }
-
-        do {
-            let package = try routeStore.loadRoutePackage(for: route)
-            exportURL = try RouteActions.exportGPXURL(for: package, routeID: route.id)
-            isSharePresented = true
-        } catch {
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    private func deleteRoute(_ route: RouteEntity) {
+    private func delete(_ route: RouteEntity) {
         do {
             try routeStore.deleteRoute(route)
         } catch {
@@ -232,214 +298,136 @@ struct RouteLibraryView: View {
         }
     }
 
-    @MainActor
-    private func renameRoute(_ route: RouteEntity) async {
-        isRenaming = true
-        defer { isRenaming = false }
+    private func deleteConfirmationBinding(for route: RouteEntity) -> Binding<Bool> {
+        Binding(
+            get: { routePendingDelete?.id == route.id },
+            set: { isPresented in
+                if !isPresented, routePendingDelete?.id == route.id {
+                    routePendingDelete = nil
+                }
+            }
+        )
+    }
 
+    #if canImport(WatchConnectivity)
+    private func sendToWatch(_ route: RouteEntity) {
         do {
-            _ = try routeStore.renameRoute(for: route, to: editedRouteName)
-            routePendingRename = nil
+            try connectivityManager.transferRouteToWatch(routeID: route.id)
         } catch {
             errorMessage = error.localizedDescription
         }
     }
+    #endif
 }
 
-private struct RouteListRow: View {
-    let route: RouteEntity
-    let routePackage: RoutePackage?
-    let isExporting: Bool
-    let isSendingToWatch: Bool
-    let isUpdatingActivityKind: Bool
-    let isReversingDirection: Bool
-    let onActivityKindChange: (ActivityKind) -> Void
-    let onReverseDirection: () -> Void
-    let onSendToWatch: (() -> Void)?
-    let onRename: () -> Void
-    let onShare: () -> Void
-    let onDelete: (RouteEntity) -> Void
-
-    @State private var showDeleteConfirmation = false
-
-    var body: some View {
-        NavigationLink(value: route.id) {
-            RouteRowView(route: route)
-        }
-        .contextMenu {
-            RouteActionMenuItems(
-                route: route,
-                routePackage: routePackage,
-                isExporting: isExporting,
-                isSendingToWatch: isSendingToWatch,
-                isUpdatingActivityKind: isUpdatingActivityKind,
-                isReversingDirection: isReversingDirection,
-                onActivityKindChange: onActivityKindChange,
-                onReverseDirection: onReverseDirection,
-                onSendToWatch: onSendToWatch,
-                onRename: onRename,
-                onShare: onShare,
-                onDelete: { showDeleteConfirmation = true }
-            )
-        }
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            Button(role: .none) {
-                showDeleteConfirmation = true
-            } label: {
-                Label("Delete", systemImage: "trash")
-            }
-            .tint(.red)
-        }
-        .confirmationDialog(
-            "Delete this route?",
-            isPresented: $showDeleteConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Delete Route", role: .destructive) {
-                showDeleteConfirmation = false
-                onDelete(route)
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This removes the route and any offline map pack from your iPhone.")
-        }
-    }
+struct ImportItem: Identifiable {
+    let id = UUID()
+    let candidate: GPXImportCandidate
 }
 
-private struct RouteRowView: View {
+private struct RouteRow: View {
     let route: RouteEntity
+    let thumbnail: [GeoCoordinate]
+    let buildProgress: OfflinePackBuildProgress?
+    let isBusy: Bool
+    let showsWatchStatus: Bool
 
     var body: some View {
-        HStack(spacing: 10) {
-            RouteShapeThumbnailLoader(route: route)
+        HStack(spacing: 14) {
+            RouteShapeThumbnail(coordinates: thumbnail, size: 62)
 
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 5) {
                 Text(route.name)
                     .font(.headline)
                     .lineLimit(2)
-                    .multilineTextAlignment(.leading)
 
-                HStack(spacing: 8) {
-                    metadataLabel(
-                        RouteFormatting.distance(route.distanceMeters),
-                        systemImage: "ruler"
-                    )
-                    metadataLabel(
-                        route.activityHint.displayName,
-                        systemImage: route.activityHint.systemImage
-                    )
+                HStack(spacing: 12) {
+                    metric(RouteFormatting.distance(route.distanceMeters), systemImage: "arrow.left.and.right")
+                    if let gain = route.elevationGainMeters, gain >= 1 {
+                        metric(RouteFormatting.elevation(gain), systemImage: "arrow.up.right")
+                    }
                 }
-                .font(.caption)
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
 
-                HStack(spacing: 8) {
-                    TransferStateBadge(state: route.transferState)
-                    OfflineStatusBadge(status: route.offlineStatus)
+                HStack(spacing: 6) {
+                    StatusChip(
+                        title: route.activityHint.displayName,
+                        systemImage: route.activityHint.systemImage,
+                        tint: route.activityHint.tint
+                    )
+                    if let buildProgress {
+                        OfflineBuildChip(progress: buildProgress)
+                    } else if route.offlineStatus != .missing {
+                        StatusChip(
+                            title: "Offline",
+                            systemImage: route.offlineStatus.systemImage,
+                            tint: route.offlineStatus.tint
+                        )
+                    }
+                    if showsWatchStatus {
+                        Image(systemName: route.transferState.systemImage)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(route.transferState.tint)
+                            .accessibilityLabel(route.transferState.displayName)
+                    }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+
+            if isBusy {
+                ProgressView()
+            }
         }
         .padding(.vertical, 4)
     }
 
-    private func metadataLabel(_ title: String, systemImage: String) -> some View {
-        HStack(spacing: 4) {
+    private func metric(_ value: String, systemImage: String) -> some View {
+        HStack(spacing: 3) {
             Image(systemName: systemImage)
-            Text(title)
+                .imageScale(.small)
+            Text(value)
+                .monospacedDigit()
         }
-        .fixedSize()
     }
 }
 
-struct TransferStateBadge: View {
-    let state: TransferState
+private struct OfflineBuildChip: View {
+    let progress: OfflinePackBuildProgress
 
     var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: state.systemImage)
-            Text(state.displayName)
+        HStack(spacing: 5) {
+            ProgressView(value: max(progress.fractionComplete, 0.02))
+                .progressViewStyle(.circular)
+                .controlSize(.mini)
+            Text("Map \(Int(progress.fractionComplete * 100))%")
+                .monospacedDigit()
         }
-        .font(.caption2.weight(.semibold))
-        .labelStyle(.titleAndIcon)
-        .fixedSize()
+        .font(.caption.weight(.medium))
+        .foregroundStyle(.blue)
         .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(state.tint.opacity(0.15), in: Capsule())
-        .foregroundStyle(state.tint)
+        .padding(.vertical, 3)
+        .background(Color.blue.opacity(0.13), in: Capsule())
+        .accessibilityLabel("Downloading offline map, \(Int(progress.fractionComplete * 100)) percent")
     }
 }
 
-struct OfflineStatusBadge: View {
-    let status: OfflinePackStatus
+/// Larger preview shown when long-pressing a route.
+private struct RoutePreviewCard: View {
+    let route: RouteEntity
+    let thumbnail: [GeoCoordinate]
 
     var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: status.systemImage)
-            Text(status.displayName)
+        VStack(alignment: .leading, spacing: 12) {
+            RouteShapeThumbnail(coordinates: thumbnail, size: 240)
+            Text(route.name)
+                .font(.headline)
+            HStack(spacing: 16) {
+                HeadlineStat(title: "Distance", value: RouteFormatting.distance(route.distanceMeters))
+                HeadlineStat(title: "Ascent", value: RouteFormatting.elevation(route.elevationGainMeters))
+            }
         }
-        .font(.caption2.weight(.semibold))
-        .labelStyle(.titleAndIcon)
-        .fixedSize()
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(status.tint.opacity(0.15), in: Capsule())
-        .foregroundStyle(status.tint)
-    }
-}
-
-private extension TransferState {
-    var displayName: String {
-        switch self {
-        case .notSent: "Not Sent"
-        case .queued: "Queued"
-        case .transferring: "Transferring"
-        case .installed: "On Watch"
-        case .failed: "Failed"
-        }
-    }
-
-    var systemImage: String {
-        switch self {
-        case .notSent: "applewatch.slash"
-        case .queued: "clock"
-        case .transferring: "arrow.up.circle"
-        case .installed: "applewatch"
-        case .failed: "exclamationmark.triangle"
-        }
-    }
-
-    var tint: Color {
-        switch self {
-        case .notSent: .secondary
-        case .queued, .transferring: .orange
-        case .installed: .green
-        case .failed: .red
-        }
-    }
-}
-
-private extension OfflinePackStatus {
-    var displayName: String {
-        switch self {
-        case .missing: "No Offline Map"
-        case .partial: "Partial Offline"
-        case .ready: "Offline Ready"
-        }
-    }
-
-    var systemImage: String {
-        switch self {
-        case .missing: "map"
-        case .partial: "map.fill"
-        case .ready: "map.circle.fill"
-        }
-    }
-
-    var tint: Color {
-        switch self {
-        case .missing: .secondary
-        case .partial: .orange
-        case .ready: .blue
-        }
+        .padding(20)
+        .frame(width: 280)
     }
 }

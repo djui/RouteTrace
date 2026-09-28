@@ -191,7 +191,7 @@ public enum RoutePackaging {
             throw RoutePackagingError.invalidArchive
         }
 
-        let indexLength = Int(UInt32(bigEndian: data.subdata(in: 4 ..< 8).withUnsafeBytes { $0.load(as: UInt32.self) }))
+        let indexLength = Int(UInt32(bigEndian: data.subdata(in: 4 ..< 8).withUnsafeBytes { $0.loadUnaligned(as: UInt32.self) }))
         let indexStart = 8
         let indexEnd = indexStart + indexLength
         guard indexEnd <= data.count else {
@@ -204,12 +204,25 @@ public enum RoutePackaging {
         )
         let payloadStart = indexEnd
         let routeDirectory = routesRoot.appendingPathComponent(index.routeId.uuidString, isDirectory: true)
-        try FileManager.default.createDirectory(at: routeDirectory, withIntermediateDirectories: true)
+        let fileManager = FileManager.default
+        try fileManager.createDirectory(at: routeDirectory, withIntermediateDirectories: true)
+
+        // A re-sent route replaces its previous contents; otherwise tiles of a deleted or rebuilt
+        // offline pack would linger next to the new route.json.
+        for stale in ["tiles", "manifest.json"] {
+            let url = routeDirectory.appendingPathComponent(stale)
+            if fileManager.fileExists(atPath: url.path) {
+                try fileManager.removeItem(at: url)
+            }
+        }
 
         for entry in index.files {
+            guard isSafeRelativePath(entry.relativePath) else {
+                throw RoutePackagingError.invalidArchive
+            }
             let start = payloadStart + entry.offset
             let end = start + entry.length
-            guard end <= data.count else {
+            guard entry.offset >= 0, entry.length >= 0, end <= data.count else {
                 throw RoutePackagingError.invalidArchive
             }
             let fileData = data.subdata(in: start ..< end)
@@ -225,6 +238,14 @@ public enum RoutePackaging {
     }
 }
 
+extension RoutePackaging {
+    /// Archive entries must stay inside the route directory.
+    static func isSafeRelativePath(_ path: String) -> Bool {
+        guard !path.isEmpty, !path.hasPrefix("/") else { return false }
+        return !path.split(separator: "/").contains { $0 == ".." || $0 == "." || $0.isEmpty }
+    }
+}
+
 public enum RoutePackagingError: Error, LocalizedError {
     case invalidArchive
 
@@ -237,28 +258,31 @@ public enum RoutePackagingError: Error, LocalizedError {
 }
 
 public enum RouteFormatting {
+    /// Keeps a value and its unit on one line ("400 m", never "400⏎m").
+    private static let unitSpace = "\u{00A0}"
+
     public static func distance(_ meters: Double) -> String {
+        guard meters.isFinite else { return "—" }
         if meters >= 1000 {
-            return String(format: "%.1f km", meters / 1000)
+            return "\(number(meters / 1000, fractionDigits: meters >= 100_000 ? 0 : 1))\(unitSpace)km"
         }
-        return String(format: "%.0f m", meters)
+        return "\(number(meters, fractionDigits: 0))\(unitSpace)m"
     }
 
     public static func elevation(_ meters: Double?) -> String {
-        guard let meters else { return "—" }
-        return String(format: "%.0f m", meters)
+        guard let meters, meters.isFinite else { return "—" }
+        return "\(number(meters, fractionDigits: 0))\(unitSpace)m"
     }
 
     public static func pace(secondsPerKm: Double) -> String {
-        guard secondsPerKm.isFinite, secondsPerKm > 0 else { return "—" }
-        let minutes = Int(secondsPerKm) / 60
-        let seconds = Int(secondsPerKm) % 60
-        return String(format: "%d:%02d /km", minutes, seconds)
+        guard secondsPerKm.isFinite, secondsPerKm > 0, secondsPerKm < 60 * 60 else { return "—" }
+        let total = Int(secondsPerKm.rounded())
+        return String(format: "%d:%02d\u{00A0}/km", total / 60, total % 60)
     }
 
     public static func speed(_ metersPerSecond: Double?) -> String {
-        guard let metersPerSecond, metersPerSecond > 0 else { return "—" }
-        return String(format: "%.1f km/h", metersPerSecond * 3.6)
+        guard let metersPerSecond, metersPerSecond.isFinite, metersPerSecond > 0 else { return "—" }
+        return "\(number(metersPerSecond * 3.6, fractionDigits: 1))\(unitSpace)km/h"
     }
 
     public static func speedOrPace(_ metersPerSecond: Double?, mode: SpeedDisplayMode) -> String {
@@ -272,7 +296,8 @@ public enum RouteFormatting {
     }
 
     public static func duration(_ seconds: TimeInterval) -> String {
-        let total = Int(seconds)
+        guard seconds.isFinite else { return "—" }
+        let total = max(0, Int(seconds))
         let hours = total / 3600
         let minutes = (total % 3600) / 60
         let secs = total % 60
@@ -280,5 +305,10 @@ public enum RouteFormatting {
             return String(format: "%d:%02d:%02d", hours, minutes, secs)
         }
         return String(format: "%d:%02d", minutes, secs)
+    }
+
+    /// Locale-aware decimal formatting (e.g. "12,5" in German), metric units kept as-is.
+    private static func number(_ value: Double, fractionDigits: Int) -> String {
+        value.formatted(.number.precision(.fractionLength(fractionDigits)))
     }
 }

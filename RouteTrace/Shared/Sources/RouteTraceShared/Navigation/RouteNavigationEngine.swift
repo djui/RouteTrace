@@ -23,16 +23,19 @@ public final class RouteNavigationEngine: @unchecked Sendable {
     private var completedTrack: [GeoCoordinate] = []
     private var actualTrack: [GeoCoordinate] = []
     private var offRouteUpdateCount = 0
+    private var hasMatchedRoute = false
 
     private static let defaultSearchWindow = 100
-    private static let widenedSearchWindow = 500
     private static let offRouteUpdatesBeforeWidening = 3
+    /// Prefer the earliest matching segment within this margin of the closest one, so loops,
+    /// out-and-backs and crossings are followed in order instead of skipping ahead.
+    private static let continuityToleranceMeters = 20.0
 
     public init(routePackage: RoutePackage) {
         self.route = routePackage.route
         self.cues = routePackage.cues
         self.activityKind = routePackage.activityHint
-        self.totalDistanceMeters = routePackage.distanceMeters
+        self.totalDistanceMeters = routePackage.navigationDistanceMeters
     }
 
     public var breadcrumb: [GeoCoordinate] {
@@ -43,20 +46,24 @@ public final class RouteNavigationEngine: @unchecked Sendable {
         actualTrack
     }
 
-    public func exportState() -> PersistedNavigationEngineState {
+    /// - Parameter includeTracks: Pass `false` when the GPS track is persisted elsewhere
+    ///   (e.g. in the activity recording) to keep the saved state small.
+    public func exportState(includeTracks: Bool = true) -> PersistedNavigationEngineState {
         PersistedNavigationEngineState(
             lastSegmentIndex: lastSegmentIndex,
             lastProgressMeters: lastProgressMeters,
-            completedTrack: completedTrack,
-            actualTrack: actualTrack
+            completedTrack: includeTracks ? completedTrack : [],
+            actualTrack: includeTracks ? actualTrack : []
         )
     }
 
     public func restoreState(_ state: PersistedNavigationEngineState) {
-        lastSegmentIndex = state.lastSegmentIndex
-        lastProgressMeters = state.lastProgressMeters
+        // Clamp so a state saved for a different version of the route cannot index out of range.
+        lastSegmentIndex = min(max(0, state.lastSegmentIndex), max(0, route.count - 2))
+        lastProgressMeters = min(max(0, state.lastProgressMeters), totalDistanceMeters)
         completedTrack = state.completedTrack
         actualTrack = state.actualTrack
+        hasMatchedRoute = state.lastProgressMeters > 0 || !state.completedTrack.isEmpty
     }
 
     public func reset() {
@@ -65,6 +72,7 @@ public final class RouteNavigationEngine: @unchecked Sendable {
         completedTrack = []
         actualTrack = []
         offRouteUpdateCount = 0
+        hasMatchedRoute = false
     }
 
     public func previewUpdate(
@@ -139,30 +147,46 @@ public final class RouteNavigationEngine: @unchecked Sendable {
             actualTrack.append(location)
         }
 
-        let searchWindow = offRouteUpdateCount >= Self.offRouteUpdatesBeforeWidening
-            ? Self.widenedSearchWindow
-            : Self.defaultSearchWindow
+        // Until the first on-route fix, search the whole route so starting mid-route works.
+        // After persistent off-route fixes, search the rest of the route to find where we rejoined.
+        let searchStart: Int
+        let searchWindow: Int
+        if !hasMatchedRoute {
+            searchStart = 0
+            searchWindow = route.count
+        } else if offRouteUpdateCount >= Self.offRouteUpdatesBeforeWidening {
+            searchStart = max(0, lastSegmentIndex - 2)
+            searchWindow = route.count
+        } else {
+            searchStart = max(0, lastSegmentIndex - 2)
+            searchWindow = Self.defaultSearchWindow
+        }
 
         guard let nearest = MapMath.nearestPointOnPolyline(
             to: location,
             route: route,
-            searchStartIndex: max(0, lastSegmentIndex - 2),
-            searchWindow: searchWindow
+            searchStartIndex: searchStart,
+            searchWindow: searchWindow,
+            preferEarliestWithinMeters: Self.continuityToleranceMeters
         ) else { return nil }
 
         let accuracyAdjustedOffRoute = max(0, nearest.distanceMeters - max(0, horizontalAccuracyMeters - 10))
-        let progress = max(lastProgressMeters, nearest.distanceAlongRouteMeters)
-
-        if persist, nearest.segmentIndex >= lastSegmentIndex {
-            lastSegmentIndex = nearest.segmentIndex
-            lastProgressMeters = progress
-            completedTrack.append(nearest.projectedCoordinate)
-        }
-
-        let remaining = max(0, totalDistanceMeters - progress)
         let warningThreshold = activityKind.offRouteWarningMeters
         let criticalThreshold = activityKind.offRouteCriticalMeters
 
+        // Far from the route the nearest segment says little about progress; hold it until we rejoin.
+        let isNearRoute = accuracyAdjustedOffRoute <= criticalThreshold * 2
+        let advances = isNearRoute && nearest.segmentIndex >= lastSegmentIndex
+        let progress = advances ? max(lastProgressMeters, nearest.distanceAlongRouteMeters) : lastProgressMeters
+
+        if persist, advances {
+            lastSegmentIndex = nearest.segmentIndex
+            lastProgressMeters = progress
+            completedTrack.append(nearest.projectedCoordinate)
+            hasMatchedRoute = true
+        }
+
+        let remaining = max(0, totalDistanceMeters - progress)
         let isOffRoute = accuracyAdjustedOffRoute > warningThreshold
         let isCritical = accuracyAdjustedOffRoute > criticalThreshold
 

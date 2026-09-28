@@ -5,413 +5,239 @@ struct AltitudeProfileView: View {
     @Bindable var viewModel: ActiveRouteViewModel
     @Bindable var uiState: ActiveRouteUIState
 
-    @FocusState private var altitudeCrownFocused: Bool
-
+    @FocusState private var crownFocused: Bool
     @Environment(\.isLuminanceReduced) private var isLuminanceReduced
-
     @State private var idleResetTask: Task<Void, Never>?
-
-    private static let inspectIdleSeconds: UInt64 = 3
 
     private var progressMeters: Double {
         viewModel.navigationSnapshot?.progressDistanceMeters ?? 0
     }
 
-    private var routeDistance: Double {
-        viewModel.routePackage?.distanceMeters ?? 0
+    private var profile: RouteElevationProfile? {
+        viewModel.elevationProfile
     }
 
-    private var altitudeCrownEnabled: Bool {
-        uiState.selectedPage == .altitude && !uiState.isMapFocus && routeDistance > 0
+    private var crownEnabled: Bool {
+        uiState.selectedPage == .altitude && !uiState.isMapFocus && profile != nil
     }
 
-    private var markerDistanceMeters: Double {
-        uiState.altitudeCrownMeters
-    }
-
-    private var noElevationTitle: String {
-        "This route has no elevation in its GPX file"
-    }
-
-    private var noElevationHint: String {
-        "Re-send the route from iPhone if elevation was added later"
+    /// The inspected distance: the crown position while scrubbing, otherwise the runner.
+    private var markerMeters: Double {
+        uiState.isAltitudeScrubbing ? uiState.altitudeCrownMeters : progressMeters
     }
 
     var body: some View {
-        if isLuminanceReduced {
-            dimmedAltitude
-        } else {
-            fullAltitude
-        }
-    }
-
-    private var dimmedAltitude: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Altitude")
-                .font(.headline)
-            HStack {
-                stat("Gain", RouteFormatting.elevation(viewModel.routePackage?.elevationGainMeters))
-                Spacer()
-                stat("Current", markerElevationLabel)
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .padding(.horizontal, 8)
-        .padding(.top, 28)
-        .routeScreenBackground()
-    }
-
-    private var fullAltitude: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Altitude")
-                .font(.subheadline.weight(.semibold))
-                .padding(.top, 28)
-
-            if let route = viewModel.routePackage, route.hasElevationData {
-                let samples = elevationSamples(from: route)
-                ChartContent(
-                    uiState: uiState,
-                    samples: samples,
-                    progressMeters: progressMeters,
-                    totalMeters: route.distanceMeters
-                )
-                .frame(maxHeight: .infinity)
-
-                HStack {
-                    stat("Gain", RouteFormatting.elevation(route.elevationGainMeters))
-                    Spacer()
-                    stat("Current", markerElevationLabel)
-                }
+        Group {
+            if let profile {
+                content(profile)
             } else {
-                Spacer()
-                VStack(spacing: 6) {
-                    Text(noElevationTitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                    Text(noElevationHint)
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                        .multilineTextAlignment(.center)
+                ContentUnavailableView {
+                    Label("No Elevation", systemImage: "mountain.2")
+                } description: {
+                    Text("This route’s GPX file has no elevation data.")
                 }
-                .frame(maxWidth: .infinity)
-                Spacer()
             }
         }
-        .padding(.horizontal, 8)
-        .padding(.bottom, 28)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .routeScreenBackground()
-        .focusable(altitudeCrownEnabled)
-        .focused($altitudeCrownFocused)
-        .altitudeCrownInteraction(
-            uiState: uiState,
-            routeDistance: routeDistance,
-            progressMeters: progressMeters,
-            isEnabled: altitudeCrownEnabled
+        .focusable(crownEnabled)
+        .focused($crownFocused)
+        .digitalCrownRotation(
+            crownBinding,
+            from: 0,
+            through: max(profile?.totalDistanceMeters ?? 1, 1),
+            by: max(10, (profile?.totalDistanceMeters ?? 0) / 100),
+            sensitivity: .low,
+            isContinuous: false,
+            isHapticFeedbackEnabled: true
         )
-        .onAppear {
-            requestAltitudeCrownFocus()
-        }
-        .onChange(of: uiState.selectedPage) { _, _ in
-            requestAltitudeCrownFocus()
-        }
-        .onChange(of: uiState.isAltitudeScrubbing) { _, isScrubbing in
-            if isScrubbing {
-                scheduleIdleReset()
-            } else {
-                idleResetTask?.cancel()
-            }
-        }
-        .onChange(of: uiState.altitudeCrownMeters) { _, _ in
-            if uiState.isAltitudeScrubbing {
-                scheduleIdleReset()
-            }
-        }
+        .onAppear { requestCrownFocus() }
+        .onChange(of: uiState.selectedPage) { _, _ in requestCrownFocus() }
         .onDisappear {
             idleResetTask?.cancel()
             uiState.clearAltitudeInspect()
         }
     }
 
-    private func requestAltitudeCrownFocus() {
-        guard altitudeCrownEnabled else {
-            altitudeCrownFocused = false
-            return
-        }
-
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(100))
-            if altitudeCrownEnabled {
-                altitudeCrownFocused = true
-            }
-        }
-    }
-
-    private var markerElevationLabel: String {
-        guard let route = viewModel.routePackage, route.hasElevationData else { return "—" }
-        let samples = elevationSamples(from: route)
-        guard let elevation = ElevationSample.interpolatedElevation(
-            at: markerDistanceMeters,
-            samples: samples
-        ) else {
-            return "—"
-        }
-        return RouteFormatting.elevation(elevation)
-    }
-
-    private func scheduleIdleReset() {
-        idleResetTask?.cancel()
-        idleResetTask = Task {
-            try? await Task.sleep(nanoseconds: Self.inspectIdleSeconds * 1_000_000_000)
-            guard !Task.isCancelled else { return }
-            uiState.clearAltitudeInspect()
-        }
-    }
-
-    private func stat(_ title: String, _ value: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.body.weight(.semibold))
-        }
-    }
-
-    private func elevationSamples(from route: RoutePackage) -> [ElevationSample] {
-        route.route.compactMap { point in
-            guard let elevation = point.elevationMeters else { return nil }
-            return ElevationSample(distanceMeters: point.distanceFromStartMeters, elevationMeters: elevation)
-        }
-    }
-}
-
-private struct ElevationSample: Identifiable {
-    let id = UUID()
-    let distanceMeters: Double
-    let elevationMeters: Double
-
-    static func interpolatedElevation(at distance: Double, samples: [ElevationSample]) -> Double? {
-        guard let first = samples.first else { return nil }
-        guard let last = samples.last else { return nil }
-
-        if distance <= first.distanceMeters { return first.elevationMeters }
-        if distance >= last.distanceMeters { return last.elevationMeters }
-
-        for index in 0..<(samples.count - 1) {
-            let start = samples[index]
-            let end = samples[index + 1]
-            guard distance >= start.distanceMeters, distance <= end.distanceMeters else { continue }
-
-            let span = end.distanceMeters - start.distanceMeters
-            guard span > 0 else { return end.elevationMeters }
-
-            let fraction = (distance - start.distanceMeters) / span
-            return start.elevationMeters + fraction * (end.elevationMeters - start.elevationMeters)
-        }
-
-        return last.elevationMeters
-    }
-}
-
-private struct ChartContent: View {
-    @Bindable var uiState: ActiveRouteUIState
-    let samples: [ElevationSample]
-    let progressMeters: Double
-    let totalMeters: Double
-
-    @Environment(\.colorScheme) private var colorScheme
-
-    var body: some View {
-        GeometryReader { proxy in
-            let markerDistanceMeters = uiState.altitudeCrownMeters
-            let minElevation = samples.map(\.elevationMeters).min() ?? 0
-            let maxElevation = samples.map(\.elevationMeters).max() ?? 1
-            let elevationRange = max(1, maxElevation - minElevation)
-            let progressX = totalMeters > 0 ? proxy.size.width * CGFloat(progressMeters / totalMeters) : 0
-            let markerX = totalMeters > 0 ? proxy.size.width * CGFloat(markerDistanceMeters / totalMeters) : 0
-            let markerPoint = markerPosition(
-                at: markerDistanceMeters,
-                in: proxy.size,
-                minElevation: minElevation,
-                range: elevationRange
-            )
-            let markerElevation = ElevationSample.interpolatedElevation(at: markerDistanceMeters, samples: samples)
-
-            ZStack(alignment: .leading) {
-                ForEach(Array(samples.enumerated()), id: \.element.id) { index, sample in
-                    if index > 0 {
-                        let previous = samples[index - 1]
-                        let distanceDelta = sample.distanceMeters - previous.distanceMeters
-                        if distanceDelta > 0 {
-                            Path { path in
-                                path.move(to: point(
-                                    for: previous,
-                                    in: proxy.size,
-                                    minElevation: minElevation,
-                                    range: elevationRange
-                                ))
-                                path.addLine(to: point(
-                                    for: sample,
-                                    in: proxy.size,
-                                    minElevation: minElevation,
-                                    range: elevationRange
-                                ))
-                            }
-                            .stroke(
-                                RouteAppearance.elevationGradeColor(
-                                    elevationDelta: sample.elevationMeters - previous.elevationMeters,
-                                    distanceDelta: distanceDelta,
-                                    colorScheme: colorScheme
-                                ),
-                                style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round)
-                            )
-                        }
-                    }
-                }
-
-                if totalMeters > 0 {
-                    Rectangle()
-                        .fill(RouteAppearance.chartProgressFill(for: colorScheme))
-                        .frame(width: progressX)
-
-                    Rectangle()
-                        .fill(.blue.opacity(0.9))
-                        .frame(width: 2, height: proxy.size.height)
-                        .offset(x: max(0, markerX - 1))
-
-                    if let markerPoint, let markerElevation {
-                        Circle()
-                            .fill(.blue)
-                            .frame(width: 8, height: 8)
-                            .position(markerPoint)
-
-                        Text(RouteFormatting.elevation(markerElevation))
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(RouteAppearance.overlayText)
-                            .position(
-                                x: min(max(markerPoint.x, 24), proxy.size.width - 24),
-                                y: min(markerPoint.y + 14, proxy.size.height - 8)
-                            )
-                    }
-                }
-            }
-        }
-    }
-
-    private func markerPosition(
-        at distance: Double,
-        in size: CGSize,
-        minElevation: Double,
-        range: Double
-    ) -> CGPoint? {
-        guard totalMeters > 0,
-              let elevation = ElevationSample.interpolatedElevation(at: distance, samples: samples) else {
-            return nil
-        }
-
-        let x = size.width * CGFloat(distance / totalMeters)
-        let normalized = (elevation - minElevation) / range
-        let y = size.height * (1 - CGFloat(normalized))
-        return CGPoint(x: x, y: y)
-    }
-
-    private func point(
-        for sample: ElevationSample,
-        in size: CGSize,
-        minElevation: Double,
-        range: Double
-    ) -> CGPoint {
-        let x = totalMeters > 0 ? size.width * CGFloat(sample.distanceMeters / totalMeters) : 0
-        let normalized = (sample.elevationMeters - minElevation) / range
-        let y = size.height * (1 - CGFloat(normalized))
-        return CGPoint(x: x, y: y)
-    }
-}
-
-private struct AltitudeCrownInteraction: ViewModifier {
-    @Bindable var uiState: ActiveRouteUIState
-    let routeDistance: Double
-    let progressMeters: Double
-    let isEnabled: Bool
-
-    @State private var isSyncingCrown = false
-
-    private var crownStep: Double {
-        max(5, routeDistance / 80)
-    }
-
-    private var altitudeCrownBinding: Binding<Double> {
+    private var crownBinding: Binding<Double> {
         Binding(
-            get: { uiState.altitudeCrownMeters },
-            set: { newValue in
-                guard !isSyncingCrown else {
-                    uiState.altitudeCrownMeters = newValue
-                    return
-                }
+            get: { uiState.isAltitudeScrubbing ? uiState.altitudeCrownMeters : progressMeters },
+            set: { value in
+                guard crownEnabled else { return }
+                uiState.altitudeCrownMeters = value
                 uiState.isAltitudeScrubbing = true
-                uiState.altitudeCrownMeters = newValue
+                scheduleReturnToLive()
             }
         )
     }
 
-    func body(content: Content) -> some View {
-        if isEnabled {
-            content
-                .digitalCrownRotation(
-                    altitudeCrownBinding,
-                    from: 0,
-                    through: max(routeDistance, 1),
-                    by: crownStep,
-                    sensitivity: .low,
-                    isContinuous: false,
-                    isHapticFeedbackEnabled: true
-                )
-                .onAppear {
-                    syncCrownToLiveProgress()
-                }
-                .onChange(of: progressMeters) { _, _ in
-                    if !uiState.isAltitudeScrubbing {
-                        syncCrownToLiveProgress()
-                    }
-                }
-                .onChange(of: routeDistance) { _, _ in
-                    uiState.altitudeCrownMeters = min(uiState.altitudeCrownMeters, max(routeDistance, 0))
-                }
-                .onChange(of: uiState.isAltitudeScrubbing) { _, isScrubbing in
-                    if !isScrubbing {
-                        syncCrownToLiveProgress()
-                    }
-                }
+    private func content(_ profile: RouteElevationProfile) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            header(profile)
+
+            AltitudeChart(
+                profile: profile,
+                progressMeters: progressMeters,
+                markerMeters: markerMeters,
+                isScrubbing: uiState.isAltitudeScrubbing,
+                isDimmed: isLuminanceReduced
+            )
+            .frame(minHeight: 72, maxHeight: .infinity)
+
+            HStack(alignment: .firstTextBaseline) {
+                stat("To climb", RouteFormatting.elevation(profile.remainingAscent(after: progressMeters)))
+                Spacer(minLength: 4)
+                stat("Climbed", RouteFormatting.elevation(viewModel.elevationGainMeters ?? 0), alignment: .trailing)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.top, 30)
+        .padding(.bottom, 22)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    @ViewBuilder
+    private func header(_ profile: RouteElevationProfile) -> some View {
+        let elevation = profile.elevation(at: markerMeters).map(RouteFormatting.elevation) ?? "—"
+        if uiState.isAltitudeScrubbing {
+            let ahead = uiState.altitudeCrownMeters - progressMeters
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(elevation)
+                    .font(.system(.title3, design: .rounded, weight: .semibold))
+                    .foregroundStyle(.cyan)
+                Text(ahead >= 0 ? "in \(RouteFormatting.distance(ahead))" : "\(RouteFormatting.distance(-ahead)) ago")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .monospacedDigit()
         } else {
-            content
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(elevation)
+                    .font(.system(.title3, design: .rounded, weight: .semibold))
+                Text("now")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .monospacedDigit()
         }
     }
 
-    private var clampedProgress: Double {
-        min(max(progressMeters, 0), max(routeDistance, 0))
+    private func stat(_ title: String, _ value: String, alignment: HorizontalAlignment = .leading) -> some View {
+        VStack(alignment: alignment, spacing: 0) {
+            Text(title)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.system(.body, design: .rounded, weight: .semibold))
+                .monospacedDigit()
+        }
     }
 
-    private func syncCrownToLiveProgress() {
-        isSyncingCrown = true
-        uiState.altitudeCrownMeters = clampedProgress
-        isSyncingCrown = false
+    private func requestCrownFocus() {
+        guard crownEnabled else {
+            crownFocused = false
+            return
+        }
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(100))
+            if crownEnabled { crownFocused = true }
+        }
+    }
+
+    /// Scrubbing is a quick look ahead; the marker returns to the runner after a pause.
+    private func scheduleReturnToLive() {
+        idleResetTask?.cancel()
+        idleResetTask = Task {
+            try? await Task.sleep(for: .seconds(4))
+            guard !Task.isCancelled else { return }
+            withAnimation(.snappy) {
+                uiState.clearAltitudeInspect()
+            }
+        }
     }
 }
 
-private extension View {
-    func altitudeCrownInteraction(
-        uiState: ActiveRouteUIState,
-        routeDistance: Double,
-        progressMeters: Double,
-        isEnabled: Bool
-    ) -> some View {
-        modifier(AltitudeCrownInteraction(
-            uiState: uiState,
-            routeDistance: routeDistance,
-            progressMeters: progressMeters,
-            isEnabled: isEnabled
-        ))
+/// Elevation profile colored by gradient, with the part already run dimmed.
+private struct AltitudeChart: View {
+    let profile: RouteElevationProfile
+    let progressMeters: Double
+    let markerMeters: Double
+    let isScrubbing: Bool
+    let isDimmed: Bool
+
+    var body: some View {
+        Canvas { context, size in
+            let range = max(profile.maxElevation - profile.minElevation, 20)
+            let floor = profile.minElevation - range * 0.08
+            let ceiling = profile.minElevation + range * 1.08
+            let total = max(profile.totalDistanceMeters, 1)
+
+            func point(_ sample: RouteElevationProfile.Sample) -> CGPoint {
+                CGPoint(
+                    x: size.width * sample.distanceMeters / total,
+                    y: size.height * (1 - (sample.elevationMeters - floor) / (ceiling - floor))
+                )
+            }
+
+            // Area under the profile.
+            var area = Path()
+            area.move(to: CGPoint(x: 0, y: size.height))
+            for sample in profile.samples {
+                area.addLine(to: point(sample))
+            }
+            area.addLine(to: CGPoint(x: size.width, y: size.height))
+            area.closeSubpath()
+            context.fill(area, with: .linearGradient(
+                Gradient(colors: [Color.cyan.opacity(isDimmed ? 0.15 : 0.35), Color.cyan.opacity(0.02)]),
+                startPoint: .zero,
+                endPoint: CGPoint(x: 0, y: size.height)
+            ))
+
+            // Line segments tinted by steepness.
+            for (a, b) in zip(profile.samples, profile.samples.dropFirst()) {
+                var segment = Path()
+                segment.move(to: point(a))
+                segment.addLine(to: point(b))
+                let run = b.distanceMeters - a.distanceMeters
+                let grade = run > 0 ? (b.elevationMeters - a.elevationMeters) / run : 0
+                context.stroke(
+                    segment,
+                    with: .color(isDimmed ? .gray : Self.color(forGrade: grade)),
+                    style: StrokeStyle(lineWidth: 2.5, lineCap: .round)
+                )
+            }
+
+            // Already covered: dim it.
+            let progressX = size.width * min(1, progressMeters / total)
+            context.fill(
+                Path(CGRect(x: 0, y: 0, width: progressX, height: size.height)),
+                with: .color(.black.opacity(0.45))
+            )
+
+            // Marker.
+            let markerX = size.width * min(1, max(0, markerMeters / total))
+            let elevation = profile.elevation(at: markerMeters) ?? profile.minElevation
+            let markerY = size.height * (1 - (elevation - floor) / (ceiling - floor))
+            context.stroke(
+                Path { $0.move(to: CGPoint(x: markerX, y: 0)); $0.addLine(to: CGPoint(x: markerX, y: size.height)) },
+                with: .color(isScrubbing ? .cyan : .white.opacity(0.7)),
+                style: StrokeStyle(lineWidth: 1.5, dash: isScrubbing ? [3, 3] : [])
+            )
+            let dot = CGRect(x: markerX - 5, y: markerY - 5, width: 10, height: 10)
+            context.fill(Path(ellipseIn: dot), with: .color(isScrubbing ? .cyan : RouteAppearance.routeColor))
+            context.stroke(Path(ellipseIn: dot), with: .color(.white), lineWidth: 2)
+        }
+        .accessibilityLabel("Elevation profile")
+    }
+
+    /// Flat is green, steep climbs turn orange and red, descents stay neutral.
+    static func color(forGrade grade: Double) -> Color {
+        switch grade {
+        case ..<(-0.02): Color.white.opacity(0.75)
+        case ..<0.03: .green
+        case ..<0.07: .yellow
+        case ..<0.12: .orange
+        default: .red
+        }
     }
 }

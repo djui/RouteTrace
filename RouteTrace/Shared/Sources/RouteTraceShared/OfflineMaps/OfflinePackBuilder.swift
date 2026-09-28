@@ -1,6 +1,6 @@
 import Foundation
 
-#if canImport(MapKit) && os(iOS) && os(iOS)
+#if canImport(MapKit) && os(iOS)
 import MapKit
 import CoreLocation
 import UIKit
@@ -23,22 +23,62 @@ public struct TileCoordinate: Codable, Sendable, Hashable {
 }
 
 public enum OfflineTilePlanner {
+    /// Smallest corridor kept at any zoom, so the map around the route itself is always present.
+    public static let minimumBufferMeters = 300.0
+
+    /// Tiles covering a corridor of `bufferMeters` around the route.
+    ///
+    /// The corridor narrows at higher zooms: far from the route an overview is enough, while
+    /// detail matters close to it. This keeps packs for long or diagonal routes a fraction of the
+    /// size of a bounding-box pack.
     public static func tiles(
         for route: [RoutePoint],
         bufferMeters: Double,
         minZoom: Int = 13,
         maxZoom: Int = 15
     ) -> [TileCoordinate] {
-        guard let box = MapMath.boundingBox(for: route.map(\.coordinate)) else { return [] }
-        let expanded = expand(box: box, bufferMeters: bufferMeters)
+        let coordinates = route.map(\.coordinate)
+        guard !coordinates.isEmpty, minZoom <= maxZoom else { return [] }
+
         var result = Set<TileCoordinate>()
-
         for zoom in minZoom...maxZoom {
-            let minX = MapMath.tileX(longitude: expanded.minLongitude, zoom: zoom)
-            let maxX = MapMath.tileX(longitude: expanded.maxLongitude, zoom: zoom)
-            let minY = MapMath.tileY(latitude: expanded.maxLatitude, zoom: zoom)
-            let maxY = MapMath.tileY(latitude: expanded.minLatitude, zoom: zoom)
+            let zoomBuffer = max(
+                minimumBufferMeters,
+                bufferMeters * pow(0.5, Double(zoom - minZoom))
+            )
+            addCorridorTiles(
+                along: coordinates,
+                zoom: zoom,
+                bufferMeters: zoomBuffer,
+                into: &result
+            )
+        }
 
+        return result.sorted {
+            if $0.zoom != $1.zoom { return $0.zoom < $1.zoom }
+            if $0.x != $1.x { return $0.x < $1.x }
+            return $0.y < $1.y
+        }
+    }
+
+    private static func addCorridorTiles(
+        along coordinates: [GeoCoordinate],
+        zoom: Int,
+        bufferMeters: Double,
+        into result: inout Set<TileCoordinate>
+    ) {
+        let zoomValue = Double(zoom)
+        let maxIndex = Int(pow(2.0, zoomValue)) - 1
+
+        func insertTiles(around coordinate: GeoCoordinate) {
+            let units = MapMath.tileUnits(for: coordinate, zoom: zoomValue)
+            let tileMeters = MapMath.tileSizeMeters(atLatitude: coordinate.latitude, zoom: zoomValue)
+            let radius = bufferMeters / max(tileMeters, 1)
+            let minX = max(0, Int(floor(units.x - radius)))
+            let maxX = min(maxIndex, Int(floor(units.x + radius)))
+            let minY = max(0, Int(floor(units.y - radius)))
+            let maxY = min(maxIndex, Int(floor(units.y + radius)))
+            guard minX <= maxX, minY <= maxY else { return }
             for x in minX...maxX {
                 for y in minY...maxY {
                     result.insert(TileCoordinate(zoom: zoom, x: x, y: y))
@@ -46,22 +86,48 @@ public enum OfflineTilePlanner {
             }
         }
 
-        return Array(result).sorted {
-            if $0.zoom != $1.zoom { return $0.zoom < $1.zoom }
-            if $0.x != $1.x { return $0.x < $1.x }
-            return $0.y < $1.y
+        insertTiles(around: coordinates[0])
+        guard coordinates.count >= 2 else { return }
+
+        for index in 1..<coordinates.count {
+            let start = coordinates[index - 1]
+            let end = coordinates[index]
+            // Sample each segment at least every half tile so no tile along it is skipped.
+            let tileMeters = MapMath.tileSizeMeters(atLatitude: start.latitude, zoom: zoomValue)
+            let length = MapMath.haversineMeters(from: start, to: end)
+            let steps = max(1, Int(ceil(length / max(tileMeters * 0.5, 1))))
+            for step in 1...steps {
+                let fraction = Double(step) / Double(steps)
+                insertTiles(around: GeoCoordinate(
+                    latitude: start.latitude + (end.latitude - start.latitude) * fraction,
+                    longitude: start.longitude + (end.longitude - start.longitude) * fraction
+                ))
+            }
+        }
+    }
+}
+
+/// A 2x2 group of tiles rendered with a single snapshot.
+struct TileBlock: Hashable, Comparable, Sendable {
+    let zoom: Int
+    let x: Int
+    let y: Int
+
+    init(containing tile: TileCoordinate) {
+        zoom = tile.zoom
+        x = tile.x >> 1
+        y = tile.y >> 1
+    }
+
+    /// The four tiles with their column/row inside the block.
+    var tiles: [(TileCoordinate, Int, Int)] {
+        [(0, 0), (1, 0), (0, 1), (1, 1)].map { column, row in
+            (TileCoordinate(zoom: zoom, x: x * 2 + column, y: y * 2 + row), column, row)
         }
     }
 
-    private static func expand(box: GeoBoundingBox, bufferMeters: Double) -> GeoBoundingBox {
-        let latDelta = bufferMeters / 111_000
-        let lonDelta = bufferMeters / (111_000 * max(0.2, cos(box.center.latitude * .pi / 180)))
-        return GeoBoundingBox(
-            minLatitude: box.minLatitude - latDelta,
-            maxLatitude: box.maxLatitude + latDelta,
-            minLongitude: box.minLongitude - lonDelta,
-            maxLongitude: box.maxLongitude + lonDelta
-        )
+    static func < (lhs: TileBlock, rhs: TileBlock) -> Bool {
+        (lhs.zoom, lhs.x, lhs.y) < (rhs.zoom, rhs.x, rhs.y)
     }
 }
 
@@ -113,12 +179,17 @@ public final class OfflinePackBuilder {
             case .snapshotFailed:
                 "Failed to build offline map snapshots."
             case .packTooLarge(let size):
-                "Offline pack is too large (\(size) bytes). Try a shorter route or lower zoom."
+                "The offline map would be too large (\(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))). Try a shorter route."
             }
         }
     }
 
     private let maxPackBytes: Int64 = 100 * 1024 * 1024
+    /// MapKit renders snapshots off the main thread; a few in flight keeps the pipeline full.
+    private let maxConcurrentSnapshots = 6
+    /// Watch screens are 2x; 3x tiles would be ~2.25x the bytes for no visible gain.
+    private nonisolated static let tileDisplayScale: CGFloat = 2
+    private nonisolated static let renderQueue = DispatchQueue(label: "com.uwe.RouteTrace.offline-tiles", qos: .userInitiated, attributes: .concurrent)
 
     public init() {}
 
@@ -130,76 +201,75 @@ public final class OfflinePackBuilder {
         let tiles = OfflineTilePlanner.tiles(
             for: package.route,
             bufferMeters: package.activityHint.corridorBufferMeters,
-            minZoom: package.distanceMeters > 200_000 ? 13 : 13,
+            minZoom: 13,
             maxZoom: package.distanceMeters > 200_000 ? 14 : 15
         )
 
-        onProgress?(
-            OfflinePackBuildProgress(
-                phase: .generatingTiles,
-                completedTiles: 0,
-                totalTiles: tiles.count
-            )
-        )
+        onProgress?(OfflinePackBuildProgress(phase: .generatingTiles, completedTiles: 0, totalTiles: tiles.count))
 
+        let fileManager = FileManager.default
         let tilesDirectory = routeDirectory.appendingPathComponent("tiles", isDirectory: true)
         let manifestURL = routeDirectory.appendingPathComponent("manifest.json")
-        if FileManager.default.fileExists(atPath: tilesDirectory.path) {
-            try FileManager.default.removeItem(at: tilesDirectory)
+        if fileManager.fileExists(atPath: tilesDirectory.path) {
+            try fileManager.removeItem(at: tilesDirectory)
         }
-        if FileManager.default.fileExists(atPath: manifestURL.path) {
-            try FileManager.default.removeItem(at: manifestURL)
+        if fileManager.fileExists(atPath: manifestURL.path) {
+            try fileManager.removeItem(at: manifestURL)
         }
-        try FileManager.default.createDirectory(at: tilesDirectory, withIntermediateDirectories: true)
+        try fileManager.createDirectory(at: tilesDirectory, withIntermediateDirectories: true)
 
         var totalBytes: Int64 = 0
-        var writtenTiles: [TileCoordinate] = []
+        var completed = 0
+        let traits = UITraitCollection { traits in
+            traits.userInterfaceStyle = .dark
+            traits.displayScale = Self.tileDisplayScale
+        }
+        let wanted = Set(tiles)
+        // Tiles are rendered in 2x2 blocks: a quarter of the snapshot calls, labels are cut at
+        // fewer edges, and MapKit's logo lands on one tile per block instead of on every tile.
+        let blocks = Array(Set(tiles.map(TileBlock.init(containing:)))).sorted()
 
         do {
-            for tile in tiles {
-                let tileURL = tilesDirectory.appendingPathComponent(tile.filename)
-                let data = try await snapshotTile(tile)
-                try data.write(to: tileURL, options: .atomic)
-                guard FileManager.default.fileExists(atPath: tileURL.path) else {
-                    throw BuildError.snapshotFailed
+            try await withThrowingTaskGroup(of: [(TileCoordinate, Data)].self) { group in
+                var pending = blocks[...]
+
+                func enqueueNext() {
+                    guard let block = pending.popFirst() else { return }
+                    group.addTask {
+                        try await Self.renderBlock(block, keeping: wanted, traits: traits)
+                    }
                 }
-                writtenTiles.append(tile)
-                totalBytes += Int64(data.count)
-                onProgress?(
-                    OfflinePackBuildProgress(
+
+                for _ in 0 ..< maxConcurrentSnapshots {
+                    enqueueNext()
+                }
+
+                while let rendered = try await group.next() {
+                    try Task.checkCancellation()
+                    for (tile, data) in rendered {
+                        guard !data.isEmpty else { throw BuildError.snapshotFailed }
+                        try data.write(to: tilesDirectory.appendingPathComponent(tile.filename), options: .atomic)
+                        totalBytes += Int64(data.count)
+                        completed += 1
+                    }
+                    if totalBytes > maxPackBytes {
+                        throw BuildError.packTooLarge(totalBytes)
+                    }
+                    onProgress?(OfflinePackBuildProgress(
                         phase: .generatingTiles,
-                        completedTiles: writtenTiles.count,
+                        completedTiles: completed,
                         totalTiles: tiles.count
-                    )
-                )
-                if totalBytes > maxPackBytes {
-                    throw BuildError.packTooLarge(totalBytes)
+                    ))
+                    enqueueNext()
                 }
             }
         } catch {
-            try? FileManager.default.removeItem(at: tilesDirectory)
-            try? FileManager.default.removeItem(at: manifestURL)
+            try? fileManager.removeItem(at: tilesDirectory)
+            try? fileManager.removeItem(at: manifestURL)
             throw error
         }
 
-        for tile in writtenTiles {
-            let tileURL = tilesDirectory.appendingPathComponent(tile.filename)
-            guard FileManager.default.fileExists(atPath: tileURL.path),
-                  let attrs = try? FileManager.default.attributesOfItem(atPath: tileURL.path),
-                  let size = attrs[.size] as? Int64, size > 0 else {
-                try? FileManager.default.removeItem(at: tilesDirectory)
-                try? FileManager.default.removeItem(at: manifestURL)
-                throw BuildError.snapshotFailed
-            }
-        }
-
-        onProgress?(
-            OfflinePackBuildProgress(
-                phase: .finalizing,
-                completedTiles: tiles.count,
-                totalTiles: tiles.count
-            )
-        )
+        onProgress?(OfflinePackBuildProgress(phase: .finalizing, completedTiles: tiles.count, totalTiles: tiles.count))
 
         let manifest = OfflineMapManifest(
             packBuiltAt: Date(),
@@ -230,35 +300,67 @@ public final class OfflinePackBuilder {
         )
     }
 
-    private func snapshotTile(_ tile: TileCoordinate) async throws -> Data {
-        let bounds = MapMath.tileBounds(x: tile.x, y: tile.y, zoom: tile.zoom)
-        let region = MKCoordinateRegion(
-            center: CLLocationCoordinate2D(
-                latitude: (bounds.minLatitude + bounds.maxLatitude) / 2,
-                longitude: (bounds.minLongitude + bounds.maxLongitude) / 2
-            ),
-            span: MKCoordinateSpan(
-                latitudeDelta: bounds.maxLatitude - bounds.minLatitude,
-                longitudeDelta: bounds.maxLongitude - bounds.minLongitude
-            )
-        )
-
+    /// Renders a 2x2 block of 256 pt tiles and slices it. Runs entirely off the main actor,
+    /// including PNG encoding.
+    private nonisolated static func renderBlock(
+        _ block: TileBlock,
+        keeping wanted: Set<TileCoordinate>,
+        traits: UITraitCollection
+    ) async throws -> [(TileCoordinate, Data)] {
+        // Exact Web Mercator alignment (a lat/lon region would be off by a few pixels vertically).
+        let tileSpan = MKMapSize.world.width / pow(2.0, Double(block.zoom))
         let options = MKMapSnapshotter.Options()
-        options.region = region
-        options.size = CGSize(width: 256, height: 256)
-        options.scale = UITraitCollection.current.displayScale
-        options.traitCollection = UITraitCollection(traitsFrom: [
-            options.traitCollection,
-            UITraitCollection(userInterfaceStyle: .dark)
-        ])
+        options.mapRect = MKMapRect(
+            x: Double(block.x * 2) * tileSpan,
+            y: Double(block.y * 2) * tileSpan,
+            width: tileSpan * 2,
+            height: tileSpan * 2
+        )
+        options.size = CGSize(width: 512, height: 512)
+        // Same muted, flat look as the Watch's live map so the blue route stays the hero;
+        // business POIs are noise on a wrist-sized map.
+        let configuration = MKStandardMapConfiguration(elevationStyle: .flat, emphasisStyle: .muted)
+        configuration.pointOfInterestFilter = .excludingAll
+        options.preferredConfiguration = configuration
+        options.traitCollection = traits
 
         let snapshotter = MKMapSnapshotter(options: options)
-        let snapshot = try await snapshotter.start()
-
-        guard let data = snapshot.image.pngData() else {
-            throw BuildError.snapshotFailed
+        let image: UIImage = try await withCheckedThrowingContinuation { continuation in
+            snapshotter.start(with: renderQueue) { snapshot, error in
+                if let image = snapshot?.image {
+                    continuation.resume(returning: image)
+                } else {
+                    continuation.resume(throwing: error ?? BuildError.snapshotFailed)
+                }
+            }
         }
-        return data
+
+        let tilePixels = 256 * tileDisplayScale
+        var rendered: [(TileCoordinate, Data)] = []
+        for (tile, column, row) in block.tiles where wanted.contains(tile) {
+            guard let data = pngData(image, pixelSide: tilePixels, column: column, row: row) else {
+                throw BuildError.snapshotFailed
+            }
+            rendered.append((tile, data))
+        }
+        return rendered
+    }
+
+    /// Cuts one tile out of a block snapshot at a fixed pixel size. Snapshots render at the
+    /// phone's screen scale (3x) regardless of the requested display scale.
+    private nonisolated static func pngData(_ image: UIImage, pixelSide: CGFloat, column: Int, row: Int) -> Data? {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+        let size = CGSize(width: pixelSide, height: pixelSide)
+        return UIGraphicsImageRenderer(size: size, format: format).pngData { _ in
+            image.draw(in: CGRect(
+                x: -CGFloat(column) * pixelSide,
+                y: -CGFloat(row) * pixelSide,
+                width: pixelSide * 2,
+                height: pixelSide * 2
+            ))
+        }
     }
 }
 #endif

@@ -8,45 +8,100 @@ struct ActivityListView: View {
 
     @State private var errorMessage: String?
     @State private var activityPendingRename: ActivityEntity?
+    @State private var activityPendingDelete: ActivityEntity?
     @State private var editedActivityTitle = ""
-    @State private var isRenaming = false
-    @State private var exportURL: URL?
-    @State private var isSharePresented = false
     @State private var isShowingSettings = false
+
+    private struct MonthSection: Identifiable {
+        let month: Date
+        let activities: [ActivityEntity]
+        var id: Date { month }
+    }
+
+    private var sections: [MonthSection] {
+        let calendar = Calendar.current
+        let grouped = Dictionary(grouping: activities) { activity in
+            calendar.dateInterval(of: .month, for: activity.startedAt)?.start ?? activity.startedAt
+        }
+        return grouped
+            .map { MonthSection(month: $0.key, activities: $0.value.sorted { $0.startedAt > $1.startedAt }) }
+            .sorted { $0.month > $1.month }
+    }
 
     var body: some View {
         NavigationStack {
             Group {
                 if activities.isEmpty {
                     ContentUnavailableView {
-                        Label("No Activities", systemImage: "figure.run")
+                        Label("No Activities Yet", systemImage: "figure.run")
                     } description: {
-                        Text("Completed workouts from your Apple Watch will appear here.")
+                        Text("Start a route on your Apple Watch. When you finish, the activity appears here with your track, pace, heart rate and elevation.")
                     }
                 } else {
-                    List(activities) { activity in
-                        ActivityListRow(
-                            activity: activity,
-                            onRename: { activity in
-                                editedActivityTitle = activity.displayTitle
-                                activityPendingRename = activity
-                            },
-                            onShare: { shareActivity($0) },
-                            onDelete: { deleteActivity($0) }
-                        )
+                    List {
+                        ForEach(sections) { section in
+                            Section {
+                                ForEach(section.activities) { activity in
+                                    NavigationLink(value: activity.id) {
+                                        ActivityRow(activity: activity, summary: routeStore.summary(for: activity))
+                                    }
+                                    .contextMenu {
+                                        Button {
+                                            editedActivityTitle = activity.displayTitle
+                                            activityPendingRename = activity
+                                        } label: {
+                                            Label("Rename", systemImage: "pencil")
+                                        }
+                                        ShareLink(
+                                            item: GPXDocument.storedActivity(id: activity.id, title: activity.displayTitle),
+                                            preview: SharePreview(activity.displayTitle)
+                                        ) {
+                                            Label("Share GPX", systemImage: "square.and.arrow.up")
+                                        }
+                                        Divider()
+                                        Button(role: .destructive) {
+                                            activityPendingDelete = activity
+                                        } label: {
+                                            Label("Delete", systemImage: "trash")
+                                        }
+                                    }
+                                    .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                        Button {
+                                            activityPendingDelete = activity
+                                        } label: {
+                                            Label("Delete", systemImage: "trash")
+                                        }
+                                        .tint(.red)
+                                    }
+                                    // Attached per row so the popover points at the activity being deleted.
+                                    .confirmationDialog(
+                                        "Delete this activity?",
+                                        isPresented: deleteConfirmationBinding(for: activity),
+                                        titleVisibility: .visible
+                                    ) {
+                                        Button("Delete Activity", role: .destructive) {
+                                            delete(activity)
+                                        }
+                                    } message: {
+                                        Text("This removes the activity from RouteTrace on this iPhone. Workouts saved to the Health app are not affected.")
+                                    }
+                                }
+                            } header: {
+                                sectionHeader(section)
+                            }
+                        }
                     }
+                    .listStyle(.insetGrouped)
                 }
             }
             .navigationTitle("Activities")
-            .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
                         isShowingSettings = true
                     } label: {
-                        Image(systemName: "gearshape")
+                        Label("Settings", systemImage: "gearshape")
                     }
-                    .accessibilityLabel("Settings")
                 }
             }
             .sheet(isPresented: $isShowingSettings) {
@@ -55,14 +110,11 @@ struct ActivityListView: View {
             .navigationDestination(for: UUID.self) { activityID in
                 if let activity = activities.first(where: { $0.id == activityID }) {
                     ActivityResultView(activity: activity)
+                } else {
+                    ContentUnavailableView("Activity Deleted", systemImage: "trash")
                 }
             }
-            .sheet(isPresented: $isSharePresented, onDismiss: { RouteActions.cleanupExport(at: exportURL) }) {
-                if let exportURL {
-                    ShareSheet(items: [exportURL])
-                }
-            }
-            .alert("Activity Error", isPresented: Binding(
+            .alert("Couldn’t Complete Action", isPresented: Binding(
                 get: { errorMessage != nil },
                 set: { if !$0 { errorMessage = nil } }
             )) {
@@ -75,36 +127,38 @@ struct ActivityListView: View {
                 set: { if !$0 { activityPendingRename = nil } }
             )) {
                 TextField("Activity Name", text: $editedActivityTitle)
-                    .textInputAutocapitalization(.words)
+                    .textInputAutocapitalization(.sentences)
                 Button("Save") {
                     if let activity = activityPendingRename {
-                        Task { await renameActivity(activity) }
+                        rename(activity)
                     }
                 }
-                .disabled(editedActivityTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isRenaming)
-                Button("Cancel", role: .cancel) {
-                    activityPendingRename = nil
-                }
-            } message: {
-                Text("Choose a name for this activity.")
+                .disabled(editedActivityTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                Button("Cancel", role: .cancel) {}
             }
         }
     }
 
-    private func shareActivity(_ activity: ActivityEntity) {
-        let recording = activity.recording
-        let plannedRoute = (try? routeStore.fetchRoute(id: recording.routeId))
-            .flatMap { try? routeStore.loadRoutePackage(for: $0) }
+    private func sectionHeader(_ section: MonthSection) -> some View {
+        let distance = section.activities.reduce(0) { $0 + routeStore.summary(for: $1).distanceMeters }
+        let count = section.activities.count
+        return HStack {
+            Text(section.month.formatted(.dateTime.month(.wide).year()))
+            Spacer()
+            Text("\(count) \(count == 1 ? "activity" : "activities") · \(RouteFormatting.distance(distance))")
+                .monospacedDigit()
+        }
+    }
 
+    private func rename(_ activity: ActivityEntity) {
         do {
-            exportURL = try RouteActions.exportActivityGPXURL(for: recording, route: plannedRoute)
-            isSharePresented = true
+            try routeStore.renameActivity(for: activity, to: editedActivityTitle)
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
-    private func deleteActivity(_ activity: ActivityEntity) {
+    private func delete(_ activity: ActivityEntity) {
         do {
             try routeStore.deleteActivity(activity)
         } catch {
@@ -112,122 +166,52 @@ struct ActivityListView: View {
         }
     }
 
-    @MainActor
-    private func renameActivity(_ activity: ActivityEntity) async {
-        isRenaming = true
-        defer { isRenaming = false }
-
-        do {
-            _ = try routeStore.renameActivity(for: activity, to: editedActivityTitle)
-            activityPendingRename = nil
-        } catch {
-            errorMessage = error.localizedDescription
-        }
+    private func deleteConfirmationBinding(for activity: ActivityEntity) -> Binding<Bool> {
+        Binding(
+            get: { activityPendingDelete?.id == activity.id },
+            set: { isPresented in
+                if !isPresented, activityPendingDelete?.id == activity.id {
+                    activityPendingDelete = nil
+                }
+            }
+        )
     }
 }
 
-private struct ActivityListRow: View {
+private struct ActivityRow: View {
     let activity: ActivityEntity
-    let onRename: (ActivityEntity) -> Void
-    let onShare: (ActivityEntity) -> Void
-    let onDelete: (ActivityEntity) -> Void
-
-    @State private var showDeleteConfirmation = false
+    let summary: ActivitySummary
 
     var body: some View {
-        NavigationLink(value: activity.id) {
-            ActivityRowView(activity: activity)
-        }
-        .contextMenu {
-            Button {
-                onRename(activity)
-            } label: {
-                Label("Rename", systemImage: "pencil")
-            }
+        HStack(spacing: 14) {
+            RouteShapeThumbnail(
+                coordinates: summary.thumbnail,
+                color: RouteDesign.trackColor,
+                size: 58,
+                placeholderSymbol: activity.activityKind.systemImage
+            )
 
-            Button {
-                onShare(activity)
-            } label: {
-                Label("Share", systemImage: "square.and.arrow.up")
-            }
-
-            Divider()
-
-            Button(role: .destructive) {
-                showDeleteConfirmation = true
-            } label: {
-                Label("Delete", systemImage: "trash")
-            }
-        }
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            Button(role: .none) {
-                showDeleteConfirmation = true
-            } label: {
-                Label("Delete", systemImage: "trash")
-            }
-            .tint(.red)
-        }
-        .confirmationDialog(
-            "Delete this activity?",
-            isPresented: $showDeleteConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("Delete Activity", role: .destructive) {
-                showDeleteConfirmation = false
-                onDelete(activity)
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This removes the activity from your iPhone.")
-        }
-    }
-}
-
-private struct ActivityRowView: View {
-    let activity: ActivityEntity
-
-    private var gpsDistanceMeters: Double {
-        ActivityTrackStatistics.gpsDistanceMeters(from: activity.recording.trackPoints)
-    }
-
-    var body: some View {
-        HStack(spacing: 10) {
-            ActivityTrackThumbnail(trackPoints: activity.recording.trackPoints)
-
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(activity.displayTitle)
                     .font(.headline)
+                    .lineLimit(2)
 
-                HStack(spacing: 8) {
-                    metadataLabel(
-                        RouteFormatting.distance(gpsDistanceMeters),
-                        systemImage: "ruler"
-                    )
-                    metadataLabel(
-                        RouteFormatting.duration(activity.elapsedSeconds),
-                        systemImage: "stopwatch"
-                    )
-                    metadataLabel(
-                        activity.activityKind.displayName,
-                        systemImage: activity.activityKind.systemImage
-                    )
+                Text(activity.startedAt.formatted(.dateTime.weekday(.abbreviated).day().month(.abbreviated).hour().minute()))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                HStack(spacing: 12) {
+                    Text(RouteFormatting.distance(summary.distanceMeters))
+                    Text(RouteFormatting.duration(summary.elapsedSeconds))
+                    Text(RouteFormatting.speedOrPace(
+                        summary.averageSpeedMetersPerSecond,
+                        mode: activity.activityKind.defaultSpeedDisplayMode
+                    ))
                 }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-                Text(activity.startedAt.formatted(date: .abbreviated, time: .shortened))
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                .font(.subheadline.weight(.medium))
+                .monospacedDigit()
             }
         }
         .padding(.vertical, 4)
-    }
-
-    private func metadataLabel(_ title: String, systemImage: String) -> some View {
-        HStack(spacing: 4) {
-            Image(systemName: systemImage)
-            Text(title)
-        }
-        .fixedSize()
     }
 }

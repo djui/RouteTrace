@@ -16,6 +16,9 @@ final class RouteWatchAutoTransfer {
         routeStore.onRoutePackageSaved = { [weak self] routeID in
             self?.queueTransfer(for: routeID)
         }
+        routeStore.onRouteDeleted = { [weak self] routeID in
+            self?.connectivityManager.notifyRouteDeleted(routeID)
+        }
     }
 
     func queueTransfer(for routeID: UUID) {

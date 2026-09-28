@@ -8,6 +8,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PROJECT_NAME = "RouteTrace"
+# Signing team for all targets (TestFlight/fastlane builds depend on it).
+DEVELOPMENT_TEAM = "8DR8DB9W22"
 PBXPROJ = ROOT / f"{PROJECT_NAME}.xcodeproj" / "project.pbxproj"
 
 IOS_SOURCES = ROOT / "RouteTrace" / "iOSApp" / "Sources" / "RouteTrace"
@@ -608,6 +610,7 @@ def pbxproj_content() -> str:
 \t\t\t\tCODE_SIGN_ENTITLEMENTS = RouteTrace/iOSApp/RouteTrace.entitlements;
 \t\t\t\tCODE_SIGN_STYLE = Automatic;
 \t\t\t\tCURRENT_PROJECT_VERSION = 1;
+\t\t\t\tDEVELOPMENT_TEAM = {DEVELOPMENT_TEAM};
 \t\t\t\tGENERATE_INFOPLIST_FILE = YES;
 \t\t\t\tINFOPLIST_FILE = RouteTrace/iOSApp/Info.plist;
 \t\t\t\tINFOPLIST_KEY_CFBundleDisplayName = RouteTrace;
@@ -635,6 +638,7 @@ def pbxproj_content() -> str:
 \t\t\t\tCODE_SIGN_ENTITLEMENTS = RouteTrace/iOSApp/RouteTrace.entitlements;
 \t\t\t\tCODE_SIGN_STYLE = Automatic;
 \t\t\t\tCURRENT_PROJECT_VERSION = 1;
+\t\t\t\tDEVELOPMENT_TEAM = {DEVELOPMENT_TEAM};
 \t\t\t\tGENERATE_INFOPLIST_FILE = YES;
 \t\t\t\tINFOPLIST_FILE = RouteTrace/iOSApp/Info.plist;
 \t\t\t\tINFOPLIST_KEY_CFBundleDisplayName = RouteTrace;
@@ -662,6 +666,7 @@ def pbxproj_content() -> str:
 \t\t\t\tCODE_SIGN_ENTITLEMENTS = RouteTrace/WatchApp/RouteTraceWatch.entitlements;
 \t\t\t\tCODE_SIGN_STYLE = Automatic;
 \t\t\t\tCURRENT_PROJECT_VERSION = 1;
+\t\t\t\tDEVELOPMENT_TEAM = {DEVELOPMENT_TEAM};
 \t\t\t\tGENERATE_INFOPLIST_FILE = YES;
 \t\t\t\tINFOPLIST_FILE = RouteTrace/WatchApp/Info.plist;
 \t\t\t\tINFOPLIST_KEY_CFBundleDisplayName = RouteTrace;
@@ -687,6 +692,7 @@ def pbxproj_content() -> str:
 \t\t\t\tCODE_SIGN_ENTITLEMENTS = RouteTrace/WatchApp/RouteTraceWatch.entitlements;
 \t\t\t\tCODE_SIGN_STYLE = Automatic;
 \t\t\t\tCURRENT_PROJECT_VERSION = 1;
+\t\t\t\tDEVELOPMENT_TEAM = {DEVELOPMENT_TEAM};
 \t\t\t\tGENERATE_INFOPLIST_FILE = YES;
 \t\t\t\tINFOPLIST_FILE = RouteTrace/WatchApp/Info.plist;
 \t\t\t\tINFOPLIST_KEY_CFBundleDisplayName = RouteTrace;
@@ -711,6 +717,7 @@ def pbxproj_content() -> str:
 \t\t\t\tCODE_SIGN_ENTITLEMENTS = RouteTrace/WatchWidgets/RouteTraceWatchWidgets.entitlements;
 \t\t\t\tCODE_SIGN_STYLE = Automatic;
 \t\t\t\tCURRENT_PROJECT_VERSION = 1;
+\t\t\t\tDEVELOPMENT_TEAM = {DEVELOPMENT_TEAM};
 \t\t\t\tGENERATE_INFOPLIST_FILE = YES;
 \t\t\t\tINFOPLIST_FILE = RouteTrace/WatchWidgets/Info.plist;
 \t\t\t\tINFOPLIST_KEY_CFBundleDisplayName = RouteTrace;
@@ -733,6 +740,7 @@ def pbxproj_content() -> str:
 \t\t\t\tCODE_SIGN_ENTITLEMENTS = RouteTrace/WatchWidgets/RouteTraceWatchWidgets.entitlements;
 \t\t\t\tCODE_SIGN_STYLE = Automatic;
 \t\t\t\tCURRENT_PROJECT_VERSION = 1;
+\t\t\t\tDEVELOPMENT_TEAM = {DEVELOPMENT_TEAM};
 \t\t\t\tGENERATE_INFOPLIST_FILE = YES;
 \t\t\t\tINFOPLIST_FILE = RouteTrace/WatchWidgets/Info.plist;
 \t\t\t\tINFOPLIST_KEY_CFBundleDisplayName = RouteTrace;
@@ -755,6 +763,7 @@ def pbxproj_content() -> str:
 \t\t\t\tBUNDLE_LOADER = "$(TEST_HOST)";
 \t\t\t\tCODE_SIGN_STYLE = Automatic;
 \t\t\t\tCURRENT_PROJECT_VERSION = 1;
+\t\t\t\tDEVELOPMENT_TEAM = {DEVELOPMENT_TEAM};
 \t\t\t\tGENERATE_INFOPLIST_FILE = YES;
 \t\t\t\tIPHONEOS_DEPLOYMENT_TARGET = 26.0;
 \t\t\t\tMARKETING_VERSION = 0.1.0;
@@ -775,6 +784,7 @@ def pbxproj_content() -> str:
 \t\t\t\tBUNDLE_LOADER = "$(TEST_HOST)";
 \t\t\t\tCODE_SIGN_STYLE = Automatic;
 \t\t\t\tCURRENT_PROJECT_VERSION = 1;
+\t\t\t\tDEVELOPMENT_TEAM = {DEVELOPMENT_TEAM};
 \t\t\t\tGENERATE_INFOPLIST_FILE = YES;
 \t\t\t\tIPHONEOS_DEPLOYMENT_TARGET = 26.0;
 \t\t\t\tMARKETING_VERSION = 0.1.0;

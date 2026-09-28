@@ -3,32 +3,6 @@ import RouteTraceShared
 import SwiftUI
 
 enum RouteActions {
-    static func exportGPXURL(for package: RoutePackage, routeID: UUID) throws -> URL {
-        let gpx = GPXExporter.exportRoute(package)
-        let url = RouteTracePaths.routesRoot
-            .appendingPathComponent("\(routeID.uuidString)-export.gpx")
-        try gpx.write(to: url, atomically: true, encoding: .utf8)
-        return url
-    }
-
-    static func exportActivityGPXURL(for recording: ActivityRecording, route: RoutePackage?) throws -> URL {
-        let gpx = GPXExporter.exportActivity(recording, route: route)
-        let url = RouteTracePaths.activitiesRoot
-            .appendingPathComponent("\(recording.id.uuidString).gpx")
-        try gpx.write(to: url, atomically: true, encoding: .utf8)
-        return url
-    }
-
-    static func cleanupExport(at url: URL?) {
-        if let url {
-            try? FileManager.default.removeItem(at: url)
-        }
-    }
-
-    static func offlineMapActionLabel(for status: OfflinePackStatus) -> String {
-        status == .missing ? "Build Offline Map" : "Rebuild Offline Map"
-    }
-
     static func offlineMapBuildErrorMessage(for error: Error) -> String {
         if let buildError = error as? OfflinePackBuilder.BuildError {
             return buildError.localizedDescription
@@ -41,86 +15,89 @@ enum RouteActions {
     }
 }
 
-struct RouteActionMenuItems: View {
-    let route: RouteEntity
-    var routePackage: RoutePackage?
-    var isExporting: Bool = false
-    var isSendingToWatch: Bool = false
-    var isUpdatingActivityKind: Bool = false
-    var isReversingDirection: Bool = false
-    var onActivityKindChange: ((ActivityKind) -> Void)?
-    var onReverseDirection: (() -> Void)?
-    var onSendToWatch: (() -> Void)?
-    var onRename: (() -> Void)?
-    var onShare: () -> Void
-    var onDelete: () -> Void
-
-    private var isMutatingRoute: Bool {
-        isUpdatingActivityKind || isReversingDirection
+extension GPXDocument {
+    /// Exports the stored route lazily; used where the package isn't loaded (list context menus).
+    static func storedRoute(id: UUID, name: String) -> GPXDocument {
+        let directory = RouteTracePaths.routeDirectory(for: id)
+        return GPXDocument(fileName: name) {
+            let package = try RoutePackaging.loadRoutePackage(from: directory)
+            return GPXExporter.exportRoute(package.renamed(to: name))
+        }
     }
 
+    /// Exports a stored activity lazily from its JSON copy on disk.
+    static func storedActivity(id: UUID, title: String) -> GPXDocument {
+        let url = RouteTracePaths.activitiesRoot.appendingPathComponent("\(id.uuidString).json")
+        return GPXDocument(fileName: title) {
+            let recording = try RouteTracePayloadCoding.decode(ActivityRecording.self, from: Data(contentsOf: url))
+            return GPXExporter.exportActivity(recording.renamed(to: title), route: nil)
+        }
+    }
+}
+
+/// Actions for a route, shared by the list's context menu and the detail screen's menu.
+struct RouteActionMenuItems: View {
+    let route: RouteEntity
+    var isBusy = false
+    var onActivityKindChange: (ActivityKind) -> Void
+    var onReverseDirection: () -> Void
+    var onSendToWatch: (() -> Void)?
+    var onRename: () -> Void
+    var showsShare = true
+    var onDelete: () -> Void
+
     var body: some View {
-        if let onActivityKindChange {
+        Section {
+            Button(action: onRename) {
+                Label("Rename", systemImage: "pencil")
+            }
+
             Menu {
                 ForEach(ActivityKind.allCases) { kind in
                     Button {
                         onActivityKindChange(kind)
                     } label: {
-                        Label(kind.displayName, systemImage: kind.systemImage)
+                        if kind == route.activityHint {
+                            Label(kind.displayName, systemImage: "checkmark")
+                        } else {
+                            Label(kind.displayName, systemImage: kind.systemImage)
+                        }
                     }
-                    .disabled(kind == route.activityHint || isMutatingRoute)
+                    .disabled(kind == route.activityHint)
                 }
             } label: {
-                Label(
-                    "Activity Type: \(route.activityHint.displayName)",
-                    systemImage: route.activityHint.systemImage
-                )
+                Label("Activity: \(route.activityHint.displayName)", systemImage: route.activityHint.systemImage)
             }
-        }
+            .disabled(isBusy)
 
-        if let onReverseDirection {
-            Button {
-                onReverseDirection()
-            } label: {
+            Button(action: onReverseDirection) {
                 Label("Reverse Direction", systemImage: "arrow.left.arrow.right")
             }
-            .disabled(isMutatingRoute || routePackage == nil)
+            .disabled(isBusy)
         }
 
-        #if canImport(WatchConnectivity)
-        if let onSendToWatch {
-            Button {
-                onSendToWatch()
-            } label: {
-                Label("Send to Apple Watch", systemImage: "applewatch.and.arrow.forward")
+        Section {
+            if let onSendToWatch {
+                Button(action: onSendToWatch) {
+                    Label("Send to Apple Watch", systemImage: "applewatch.and.arrow.forward")
+                }
+                .disabled(!route.transferState.canSend)
             }
-            .disabled(isSendingToWatch)
-        }
-        #endif
 
-        if let onRename {
-            Button {
-                onRename()
-            } label: {
-                Label("Rename", systemImage: "pencil")
+            if showsShare {
+                ShareLink(
+                    item: GPXDocument.storedRoute(id: route.id, name: route.name),
+                    preview: SharePreview(route.name)
+                ) {
+                    Label("Share GPX", systemImage: "square.and.arrow.up")
+                }
             }
         }
 
-        Divider()
-
-        Button {
-            onShare()
-        } label: {
-            Label("Share", systemImage: "square.and.arrow.up")
-        }
-        .disabled(isExporting || routePackage == nil)
-
-        Divider()
-
-        Button(role: .destructive) {
-            onDelete()
-        } label: {
-            Label("Delete", systemImage: "trash")
+        Section {
+            Button(role: .destructive, action: onDelete) {
+                Label("Delete", systemImage: "trash")
+            }
         }
     }
 }

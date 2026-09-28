@@ -28,7 +28,7 @@ public struct BatteryModePolicy: Sendable, Equatable {
             mapRecenterMinInterval = 0
             mapRecenterMinDistanceMeters = 0
             widgetReloadMinInterval = 15
-            persistenceMinInterval = 2
+            persistenceMinInterval = 10
             preferredStartPage = nil
             suggestedMapDisplayMode = nil
             allowsHeadingUpRotation = true
@@ -41,7 +41,7 @@ public struct BatteryModePolicy: Sendable, Equatable {
             mapRecenterMinInterval = 2.5
             mapRecenterMinDistanceMeters = 10
             widgetReloadMinInterval = 30
-            persistenceMinInterval = 3
+            persistenceMinInterval = 15
             preferredStartPage = .directions
             suggestedMapDisplayMode = nil
             allowsHeadingUpRotation = true
@@ -54,7 +54,7 @@ public struct BatteryModePolicy: Sendable, Equatable {
             mapRecenterMinInterval = 5
             mapRecenterMinDistanceMeters = 25
             widgetReloadMinInterval = 75
-            persistenceMinInterval = 5
+            persistenceMinInterval = 30
             preferredStartPage = .directions
             suggestedMapDisplayMode = .routeOnly
             allowsHeadingUpRotation = false
