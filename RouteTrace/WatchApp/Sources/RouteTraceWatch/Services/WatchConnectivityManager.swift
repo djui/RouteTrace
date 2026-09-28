@@ -169,6 +169,10 @@ final class WatchConnectivityManager: NSObject {
     }
 
     private func handleUserInfo(_ userInfo: [String: Any]) async {
+        if let request = RouteStartRequest(dictionary: userInfo) {
+            RouteStartRequests.shared.receive(request)
+            return
+        }
         guard userInfo["type"] as? String == WatchMessageType.routeDeleted,
               let idString = userInfo["routeId"] as? String,
               let routeID = UUID(uuidString: idString) else { return }

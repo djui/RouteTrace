@@ -177,6 +177,13 @@ final class PhoneConnectivityManager: NSObject, ObservableObject {
         try routeStore.updateTransferState(for: routeID, state: .transferring)
     }
 
+    /// Asks the watch to start navigating a route. Queued until the watch app runs; the watch
+    /// ignores it once stale.
+    func requestRouteStart(_ routeID: UUID) throws {
+        guard let session, session.activationState == .activated else { throw ConnectivityError.sessionUnavailable }
+        session.transferUserInfo(RouteStartRequest(routeID: routeID).dictionaryRepresentation)
+    }
+
     /// Tells the watch to drop a route deleted on this iPhone. Queued until the watch app runs.
     func notifyRouteDeleted(_ routeID: UUID) {
         cancelInFlightTransfer(for: routeID)

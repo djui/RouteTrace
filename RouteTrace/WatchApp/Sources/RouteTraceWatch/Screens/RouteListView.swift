@@ -10,6 +10,9 @@ struct RouteListView: View {
     @State private var activeViewModel = ActiveRouteViewModel()
     @State private var showingSettings = false
     @State private var didAttemptRestore = false
+    /// Start requests wait until an interrupted activity has had its chance to be restored.
+    @State private var isReadyForStartRequests = false
+    private let startRequests = RouteStartRequests.shared
     @State private var routePendingDelete: RoutePackage?
     @State private var activityPendingDelete: ActivityRecording?
 
@@ -37,10 +40,15 @@ struct RouteListView: View {
                 activeViewModel.applyBatterySettings(from: preferences)
             }
         }
-        .onReceive(NotificationCenter.default.publisher(for: RouteTraceIntentNotifications.startLastRoute)) { _ in
-            Task {
-                await startLastRouteIfNeeded()
-            }
+        .onChange(of: startRequests.pending) { _, _ in
+            handleStartRequest()
+        }
+        .onChange(of: routeStore.routes.map(\.id)) { _, _ in
+            // A requested route may just have arrived from the iPhone.
+            handleStartRequest()
+        }
+        .onChange(of: routeStore.routes.map(\.name)) { _, _ in
+            RouteTraceShortcuts.updateAppShortcutParameters()
         }
         .onOpenURL { url in
             handleDeepLink(url)
@@ -51,6 +59,9 @@ struct RouteListView: View {
             await routeStore.reload()
             await activityStore.reload()
             _ = await activeViewModel.restoreIfNeeded(from: routeStore, preferences: preferences)
+            isReadyForStartRequests = true
+            handleStartRequest()
+            RouteTraceShortcuts.updateAppShortcutParameters()
         }
     }
 
@@ -187,13 +198,23 @@ struct RouteListView: View {
         }
     }
 
-    private func startLastRouteIfNeeded() async {
-        guard !activeViewModel.isActive, let route = routeStore.lastSelectedRoute else { return }
-        await activeViewModel.start(
-            route: route,
-            activityKind: route.activityHint,
-            preferences: preferences
-        )
+    /// Starts the route Siri, Shortcuts or the iPhone asked for, once its route is on the watch.
+    private func handleStartRequest() {
+        guard isReadyForStartRequests, startRequests.pending != nil else { return }
+        guard !activeViewModel.isActive else {
+            // Never replace an activity in progress.
+            startRequests.cancel()
+            return
+        }
+        guard let route = startRequests.takeRoute(from: routeStore) else { return }
+        routeStore.lastSelectedRouteID = route.id
+        Task {
+            await activeViewModel.start(
+                route: route,
+                activityKind: route.activityHint,
+                preferences: preferences
+            )
+        }
     }
 
     private func handleDeepLink(_ url: URL) {

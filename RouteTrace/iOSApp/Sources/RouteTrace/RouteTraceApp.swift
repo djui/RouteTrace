@@ -2,6 +2,12 @@ import RouteTraceShared
 import SwiftData
 import SwiftUI
 
+/// One model container per process, shared by the app and its intents.
+@MainActor
+enum AppModelContainer {
+    static let shared = RouteTraceModelContainerFactory.make()
+}
+
 @main
 struct RouteTraceApp: App {
     private let container: ModelContainer
@@ -9,7 +15,7 @@ struct RouteTraceApp: App {
 
     init() {
         try? RouteTracePaths.ensureDirectoriesExist()
-        container = RouteTraceModelContainerFactory.make()
+        container = AppModelContainer.shared
     }
 
     var body: some Scene {
@@ -89,6 +95,7 @@ struct RouteTraceRootView: View {
         connectivityManager = manager
         watchAutoTransfer = autoTransfer
         manager.activate()
+        AppServices.shared.register(routeStore: store, connectivity: manager)
         #endif
 
         try? await store.restoreCloudBackedFilesIfNeeded()

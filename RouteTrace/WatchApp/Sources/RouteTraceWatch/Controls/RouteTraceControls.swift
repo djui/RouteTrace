@@ -3,7 +3,6 @@ import Foundation
 import RouteTraceShared
 
 enum RouteTraceIntentNotifications {
-    static let startLastRoute = Notification.Name("RouteTrace.startLastRoute")
     static let toggleMapDirections = Notification.Name("RouteTrace.toggleMapDirections")
     static let pauseResumeActivity = Notification.Name("RouteTrace.pauseResumeActivity")
 }
@@ -13,8 +12,14 @@ struct StartLastRouteIntent: AppIntent {
     static let description = IntentDescription("Start navigating your most recently used route.")
     static let openAppWhenRun: Bool = true
 
+    @MainActor
     func perform() async throws -> some IntentResult {
-        NotificationCenter.default.post(name: RouteTraceIntentNotifications.startLastRoute, object: nil)
+        let store = WatchRouteStore.shared
+        if store.routes.isEmpty {
+            await store.reload()
+        }
+        guard let route = store.lastSelectedRoute else { throw RouteIntentError.noRoutes }
+        try RouteStartRequests.shared.request(routeID: route.id)
         return .result()
     }
 }
@@ -52,6 +57,16 @@ struct PauseResumeActivityIntent: AppIntent {
 
 struct RouteTraceShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
+        AppShortcut(
+            intent: StartRouteIntent(),
+            phrases: [
+                "Start \(\.$route) in \(.applicationName)",
+                "Navigate \(\.$route) with \(.applicationName)",
+                "Follow \(\.$route) in \(.applicationName)"
+            ],
+            shortTitle: "Start Route",
+            systemImageName: "point.bottomleft.forward.to.point.topright.scurvepath"
+        )
         AppShortcut(
             intent: StartLastRouteIntent(),
             phrases: [

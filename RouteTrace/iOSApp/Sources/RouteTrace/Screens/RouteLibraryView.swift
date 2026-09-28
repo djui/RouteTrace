@@ -125,8 +125,15 @@ struct RouteLibraryView: View {
                 tint: event.kind == .failed ? .orange : .green
             )
         }
+        .onChange(of: routes.map(\.name)) { _, _ in
+            // Siri learns route names from the App Shortcut phrases.
+            RouteTraceShortcuts.updateAppShortcutParameters()
+        }
         #endif
         .task {
+            #if canImport(WatchConnectivity)
+            RouteTraceShortcuts.updateAppShortcutParameters()
+            #endif
             if let url = incomingGPX.pendingImport?.url {
                 incomingGPX.clearPending()
                 await prepareImport(from: url)
