@@ -17,11 +17,15 @@ private struct WatchReplyHandler: @unchecked Sendable {
 private enum IncomingWatchMessage: Sendable {
     case routeInstalled(routeID: UUID, routeName: String)
     case routeRemoved(routeID: UUID)
+    case routeOrder(RouteOrder)
     case activityRecording(Data)
     case unsupported
 }
 
 private nonisolated func parseIncomingWatchMessage(_ message: [String: Any]) -> IncomingWatchMessage {
+    if let order = RouteOrder(dictionary: message) {
+        return .routeOrder(order)
+    }
     let type = message["type"] as? String
     if let routeIDString = message["routeId"] as? String,
        let routeID = UUID(uuidString: routeIDString) {
@@ -177,6 +181,12 @@ final class PhoneConnectivityManager: NSObject, ObservableObject {
         try routeStore.updateTransferState(for: routeID, state: .transferring)
     }
 
+    /// Sends the route order to the watch. Queued until the watch app runs; the newer order wins.
+    func sendRouteOrder(_ order: RouteOrder) {
+        guard let session, session.activationState == .activated, canTransferToWatch else { return }
+        session.transferUserInfo(order.dictionaryRepresentation)
+    }
+
     /// Asks the watch to start navigating a route. Queued until the watch app runs; the watch
     /// ignores it once stale.
     func requestRouteStart(_ routeID: UUID) throws {
@@ -236,6 +246,9 @@ final class PhoneConnectivityManager: NSObject, ObservableObject {
         case .routeRemoved(let routeID):
             // Deleted on the watch: don't auto-send it back, but keep it one tap away.
             try? routeStore.updateTransferState(for: routeID, state: .removedFromWatch)
+            return true
+        case .routeOrder(let order):
+            RouteOrderStore.shared.apply(order)
             return true
         case .activityRecording(let payload):
             return receiveActivityData(payload)

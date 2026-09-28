@@ -28,7 +28,12 @@ final class AppServices {
         _ = try? routeStore.loadSettings()
         watchAutoTransfer.registerWithRouteStore()
         connectivity.onSessionActivated = { [weak self] in
-            self?.watchAutoTransfer.transferPendingRoutes()
+            guard let self else { return }
+            watchAutoTransfer.transferPendingRoutes()
+            // Catches a watch that installed the app after the last reorder.
+            if let order = RouteOrderStore.shared.order {
+                connectivity.sendRouteOrder(order)
+            }
         }
         connectivity.activate()
     }

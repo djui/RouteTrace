@@ -24,10 +24,19 @@ struct RouteLibraryView: View {
     @State private var busyRouteIDs: Set<UUID> = []
     @State private var banner: BannerContent?
 
+    /// Routes in the order set here or on the Watch, newest first until reordered.
+    private var orderedRoutes: [RouteEntity] {
+        RouteOrderStore.shared.sorted(routes, id: \.id, importedAt: \.importedAt)
+    }
+
+    private var isSearching: Bool {
+        !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     private var filteredRoutes: [RouteEntity] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return routes }
-        return routes.filter { $0.name.localizedStandardContains(query) }
+        guard !query.isEmpty else { return orderedRoutes }
+        return orderedRoutes.filter { $0.name.localizedStandardContains(query) }
     }
 
     private var showsWatchStatus: Bool {
@@ -208,6 +217,7 @@ struct RouteLibraryView: View {
                     }
                     #endif
                 }
+                .onMove(perform: moveAction)
             }
             .listStyle(.insetGrouped)
             .searchable(text: $searchText, prompt: "Search Routes")
@@ -235,6 +245,11 @@ struct RouteLibraryView: View {
                 Label("Import GPX", systemImage: "plus")
             }
             .disabled(isLoadingImport)
+        }
+        if routes.count > 1 && !isSearching {
+            ToolbarItem(placement: .topBarTrailing) {
+                EditButton()
+            }
         }
     }
 
@@ -264,6 +279,26 @@ struct RouteLibraryView: View {
     }
 
     // MARK: - Actions
+
+    /// Moving within search results would be ambiguous, so reordering is off while searching.
+    private var moveAction: ((IndexSet, Int) -> Void)? {
+        guard !isSearching else { return nil }
+        return { offsets, offset in moveRoutes(from: offsets, to: offset) }
+    }
+
+    private func moveRoutes(from offsets: IndexSet, to offset: Int) {
+        let displayed = orderedRoutes.map(\.id)
+        let current = RouteOrderStore.shared.order ?? RouteOrder(routeIDs: displayed)
+        let updated = current.moving(
+            offsets.map { displayed[$0] },
+            before: RouteOrder.destination(forListOffset: offset, in: displayed),
+            displayed: displayed
+        )
+        RouteOrderStore.shared.update(updated)
+        #if canImport(WatchConnectivity)
+        connectivityManager.sendRouteOrder(updated)
+        #endif
+    }
 
     private func prepareImport(from url: URL) async {
         isLoadingImport = true

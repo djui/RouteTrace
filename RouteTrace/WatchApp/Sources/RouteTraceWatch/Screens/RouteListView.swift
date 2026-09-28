@@ -156,22 +156,16 @@ struct RouteListView: View {
         routeStore.isLoading || activityStore.isLoading || cloudSync.isSyncing
     }
 
+    /// Routes in the order set on iPhone or here, newest first until reordered.
+    private var orderedRoutes: [RoutePackage] {
+        RouteOrderStore.shared.sorted(routeStore.routes, id: \.id, importedAt: \.importedAt)
+    }
+
     private var libraryList: some View {
         List {
             if !routeStore.routes.isEmpty {
                 Section("Routes") {
-                    ForEach(routeStore.routes) { route in
-                        NavigationLink(value: route.id) {
-                            RouteRowView(route: route)
-                        }
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button(role: .destructive) {
-                                routePendingDelete = route
-                            } label: {
-                                Label("Delete", systemImage: "trash")
-                            }
-                        }
-                    }
+                    reorderableRouteRows
                 }
             }
 
@@ -196,6 +190,44 @@ struct RouteListView: View {
                 }
             }
         }
+        .modifier(RouteReorderContainer(move: moveRoutes))
+    }
+
+    private var routeRows: some DynamicViewContent {
+        ForEach(orderedRoutes) { route in
+            NavigationLink(value: route.id) {
+                RouteRowView(route: route)
+            }
+            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                Button(role: .destructive) {
+                    routePendingDelete = route
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+            }
+        }
+    }
+
+    /// Dragging routes into a new order needs watchOS 27.
+    @ViewBuilder
+    private var reorderableRouteRows: some View {
+        #if compiler(>=6.4)
+        if #available(watchOS 27.0, *) {
+            routeRows.reorderable()
+        } else {
+            routeRows
+        }
+        #else
+        routeRows
+        #endif
+    }
+
+    private func moveRoutes(_ sources: [UUID], before destination: UUID?) {
+        let displayed = orderedRoutes.map(\.id)
+        let current = RouteOrderStore.shared.order ?? RouteOrder(routeIDs: displayed)
+        let updated = current.moving(sources, before: destination, displayed: displayed)
+        RouteOrderStore.shared.update(updated)
+        connectivity.sendRouteOrder(updated)
     }
 
     /// Starts the route Siri, Shortcuts or the iPhone asked for, once its route is on the watch.
@@ -219,6 +251,29 @@ struct RouteListView: View {
 
     private func handleDeepLink(_ url: URL) {
         guard url.scheme == "routetrace", url.host == "active" else { return }
+    }
+}
+
+/// Lets the route list take drops from `reorderable()` rows on watchOS 27.
+private struct RouteReorderContainer: ViewModifier {
+    let move: (_ sources: [UUID], _ destination: UUID?) -> Void
+
+    func body(content: Content) -> some View {
+        #if compiler(>=6.4)
+        if #available(watchOS 27.0, *) {
+            content.reorderContainer(for: RoutePackage.self) { difference in
+                let destination: UUID? = switch difference.destination.position {
+                case .before(let routeID): routeID
+                case .end: nil
+                }
+                move(difference.sources, destination)
+            }
+        } else {
+            content
+        }
+        #else
+        content
+        #endif
     }
 }
 
