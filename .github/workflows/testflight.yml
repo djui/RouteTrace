@@ -21,16 +21,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # actool needs a watchOS simulator runtime matching the SDK to compile the Watch app's
+      # .icon asset. Xcode 26.0.1's SDK has none on this image; 26.3's watchOS 26.2 SDK does.
       - name: Select Xcode
         run: |
-          if [ -d "/Applications/Xcode_26.0.app" ]; then
-            sudo xcode-select -s /Applications/Xcode_26.0.app
-          elif [ -d "/Applications/Xcode_26.app" ]; then
-            sudo xcode-select -s /Applications/Xcode_26.app
-          else
-            echo "Using default Xcode:"
-            xcodebuild -version
-          fi
+          sudo xcode-select -s /Applications/Xcode_26.3.app
+          xcodebuild -version
 
       - name: Set up Ruby
         uses: ruby/setup-ruby@v1
