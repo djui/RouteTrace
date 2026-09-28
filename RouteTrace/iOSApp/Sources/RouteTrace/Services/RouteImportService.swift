@@ -44,7 +44,7 @@ struct GPXImportCandidate: Sendable {
 
 @MainActor
 final class RouteImportService {
-    private static let signposter = OSSignposter(subsystem: "com.uwe.RouteTrace", category: "Import")
+    private static let signposter = OSSignposter(subsystem: "com.routetrace.app", category: "Import")
 
     private let routeStore: RouteStore
 

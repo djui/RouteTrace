@@ -84,7 +84,7 @@ final class PhoneConnectivityManager: NSObject, ObservableObject {
         }
     }
 
-    private nonisolated static let logger = Logger(subsystem: "com.uwe.RouteTrace", category: "WatchConnectivity")
+    private nonisolated static let logger = Logger(subsystem: "com.routetrace.app", category: "WatchConnectivity")
 
     private let context: ModelContext
     private let routeStore: RouteStore

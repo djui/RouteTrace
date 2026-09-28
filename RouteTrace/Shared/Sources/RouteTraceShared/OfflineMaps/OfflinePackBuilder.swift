@@ -189,7 +189,7 @@ public final class OfflinePackBuilder {
     private let maxConcurrentSnapshots = 6
     /// Watch screens are 2x; 3x tiles would be ~2.25x the bytes for no visible gain.
     private nonisolated static let tileDisplayScale: CGFloat = 2
-    private nonisolated static let renderQueue = DispatchQueue(label: "com.uwe.RouteTrace.offline-tiles", qos: .userInitiated, attributes: .concurrent)
+    private nonisolated static let renderQueue = DispatchQueue(label: "com.routetrace.app.offline-tiles", qos: .userInitiated, attributes: .concurrent)
 
     public init() {}
 

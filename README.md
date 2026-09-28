@@ -27,9 +27,9 @@ WatchMap/
 
 | Target | Platform | Bundle ID |
 |--------|----------|-----------|
-| **RouteTrace** | iOS 26 | `com.uwe.RouteTrace` |
-| **RouteTraceWatch** | watchOS 26 | `com.uwe.RouteTrace.watchkitapp` |
-| **RouteTraceTests** | iOS 26 (unit tests) | `com.uwe.RouteTraceTests` |
+| **RouteTrace** | iOS 26 | `com.routetrace.app` |
+| **RouteTraceWatch** | watchOS 26 | `com.routetrace.app.watchkitapp` |
+| **RouteTraceTests** | iOS 26 (unit tests) | `com.routetrace.app.tests` |
 
 The iPhone app embeds the Watch app. Shared logic lives in the local Swift package `RouteTraceShared` (from `Package.swift`) and is linked by all three targets.
 
@@ -91,7 +91,7 @@ Release builds archive the **RouteTrace** scheme (iOS app with embedded Watch ap
 
 ### Prerequisites (one-time)
 
-1. Create an app record in [App Store Connect](https://appstoreconnect.apple.com) for bundle ID `com.uwe.RouteTrace`.
+1. Create an app record in [App Store Connect](https://appstoreconnect.apple.com) for bundle ID `com.routetrace.app`.
 2. In the [Apple Developer portal](https://developer.apple.com/account), enable these capabilities on the App IDs:
    - HealthKit
    - iCloud (CloudKit)

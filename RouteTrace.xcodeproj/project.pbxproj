@@ -697,7 +697,7 @@
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.uwe.RouteTrace;
+				PRODUCT_BUNDLE_IDENTIFIER = com.routetrace.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -725,7 +725,7 @@
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.uwe.RouteTrace;
+				PRODUCT_BUNDLE_IDENTIFIER = com.routetrace.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -747,9 +747,9 @@
 				INFOPLIST_FILE = RouteTrace/WatchApp/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = RouteTrace;
 				INFOPLIST_KEY_WKApplication = YES;
-				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.uwe.RouteTrace;
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.routetrace.app;
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.uwe.RouteTrace.watchkitapp;
+				PRODUCT_BUNDLE_IDENTIFIER = com.routetrace.app.watchkitapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
@@ -773,9 +773,9 @@
 				INFOPLIST_FILE = RouteTrace/WatchApp/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = RouteTrace;
 				INFOPLIST_KEY_WKApplication = YES;
-				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.uwe.RouteTrace;
+				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.routetrace.app;
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.uwe.RouteTrace.watchkitapp;
+				PRODUCT_BUNDLE_IDENTIFIER = com.routetrace.app.watchkitapp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
@@ -798,7 +798,7 @@
 				INFOPLIST_FILE = RouteTrace/WatchWidgets/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = RouteTrace;
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.uwe.RouteTrace.watchkitapp.widgets;
+				PRODUCT_BUNDLE_IDENTIFIER = com.routetrace.app.watchkitapp.widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
@@ -821,7 +821,7 @@
 				INFOPLIST_FILE = RouteTrace/WatchWidgets/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = RouteTrace;
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.uwe.RouteTrace.watchkitapp.widgets;
+				PRODUCT_BUNDLE_IDENTIFIER = com.routetrace.app.watchkitapp.widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = watchos;
 				SKIP_INSTALL = YES;
@@ -843,7 +843,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.uwe.RouteTraceTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.routetrace.app.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -864,7 +864,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.uwe.RouteTraceTests;
+				PRODUCT_BUNDLE_IDENTIFIER = com.routetrace.app.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";

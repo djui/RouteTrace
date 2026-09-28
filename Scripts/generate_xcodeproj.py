@@ -627,7 +627,7 @@ def pbxproj_content() -> str:
 \t\t\t\tINFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
 \t\t\t\tIPHONEOS_DEPLOYMENT_TARGET = 26.0;
 \t\t\t\tMARKETING_VERSION = 0.1.0;
-\t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = com.uwe.RouteTrace;
+\t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = com.routetrace.app;
 \t\t\t\tPRODUCT_NAME = "$(TARGET_NAME)";
 \t\t\t\tSDKROOT = iphoneos;
 \t\t\t\tSUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -655,7 +655,7 @@ def pbxproj_content() -> str:
 \t\t\t\tINFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = UIInterfaceOrientationPortrait;
 \t\t\t\tIPHONEOS_DEPLOYMENT_TARGET = 26.0;
 \t\t\t\tMARKETING_VERSION = 0.1.0;
-\t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = com.uwe.RouteTrace;
+\t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = com.routetrace.app;
 \t\t\t\tPRODUCT_NAME = "$(TARGET_NAME)";
 \t\t\t\tSDKROOT = iphoneos;
 \t\t\t\tSUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -677,9 +677,9 @@ def pbxproj_content() -> str:
 \t\t\t\tINFOPLIST_FILE = RouteTrace/WatchApp/Info.plist;
 \t\t\t\tINFOPLIST_KEY_CFBundleDisplayName = RouteTrace;
 \t\t\t\tINFOPLIST_KEY_WKApplication = YES;
-\t\t\t\tINFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.uwe.RouteTrace;
+\t\t\t\tINFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.routetrace.app;
 \t\t\t\tMARKETING_VERSION = 0.1.0;
-\t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = com.uwe.RouteTrace.watchkitapp;
+\t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = com.routetrace.app.watchkitapp;
 \t\t\t\tPRODUCT_NAME = "$(TARGET_NAME)";
 \t\t\t\tSDKROOT = watchos;
 \t\t\t\tSKIP_INSTALL = YES;
@@ -703,9 +703,9 @@ def pbxproj_content() -> str:
 \t\t\t\tINFOPLIST_FILE = RouteTrace/WatchApp/Info.plist;
 \t\t\t\tINFOPLIST_KEY_CFBundleDisplayName = RouteTrace;
 \t\t\t\tINFOPLIST_KEY_WKApplication = YES;
-\t\t\t\tINFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.uwe.RouteTrace;
+\t\t\t\tINFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.routetrace.app;
 \t\t\t\tMARKETING_VERSION = 0.1.0;
-\t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = com.uwe.RouteTrace.watchkitapp;
+\t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = com.routetrace.app.watchkitapp;
 \t\t\t\tPRODUCT_NAME = "$(TARGET_NAME)";
 \t\t\t\tSDKROOT = watchos;
 \t\t\t\tSKIP_INSTALL = YES;
@@ -728,7 +728,7 @@ def pbxproj_content() -> str:
 \t\t\t\tINFOPLIST_FILE = RouteTrace/WatchWidgets/Info.plist;
 \t\t\t\tINFOPLIST_KEY_CFBundleDisplayName = RouteTrace;
 \t\t\t\tMARKETING_VERSION = 0.1.0;
-\t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = com.uwe.RouteTrace.watchkitapp.widgets;
+\t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = com.routetrace.app.watchkitapp.widgets;
 \t\t\t\tPRODUCT_NAME = "$(TARGET_NAME)";
 \t\t\t\tSDKROOT = watchos;
 \t\t\t\tSKIP_INSTALL = YES;
@@ -751,7 +751,7 @@ def pbxproj_content() -> str:
 \t\t\t\tINFOPLIST_FILE = RouteTrace/WatchWidgets/Info.plist;
 \t\t\t\tINFOPLIST_KEY_CFBundleDisplayName = RouteTrace;
 \t\t\t\tMARKETING_VERSION = 0.1.0;
-\t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = com.uwe.RouteTrace.watchkitapp.widgets;
+\t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = com.routetrace.app.watchkitapp.widgets;
 \t\t\t\tPRODUCT_NAME = "$(TARGET_NAME)";
 \t\t\t\tSDKROOT = watchos;
 \t\t\t\tSKIP_INSTALL = YES;
@@ -773,7 +773,7 @@ def pbxproj_content() -> str:
 \t\t\t\tGENERATE_INFOPLIST_FILE = YES;
 \t\t\t\tIPHONEOS_DEPLOYMENT_TARGET = 26.0;
 \t\t\t\tMARKETING_VERSION = 0.1.0;
-\t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = com.uwe.RouteTraceTests;
+\t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = com.routetrace.app.tests;
 \t\t\t\tPRODUCT_NAME = "$(TARGET_NAME)";
 \t\t\t\tSDKROOT = iphoneos;
 \t\t\t\tSUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -794,7 +794,7 @@ def pbxproj_content() -> str:
 \t\t\t\tGENERATE_INFOPLIST_FILE = YES;
 \t\t\t\tIPHONEOS_DEPLOYMENT_TARGET = 26.0;
 \t\t\t\tMARKETING_VERSION = 0.1.0;
-\t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = com.uwe.RouteTraceTests;
+\t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = com.routetrace.app.tests;
 \t\t\t\tPRODUCT_NAME = "$(TARGET_NAME)";
 \t\t\t\tSDKROOT = iphoneos;
 \t\t\t\tSUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
