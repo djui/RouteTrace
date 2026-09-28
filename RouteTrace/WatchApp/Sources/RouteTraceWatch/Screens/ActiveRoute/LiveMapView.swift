@@ -11,6 +11,7 @@ struct LiveMapView: View {
 
     @FocusState private var mapCrownFocused: Bool
     @State private var cameraPosition: MapCameraPosition = .automatic
+    @State private var visibleCamera: MapCamera?
 
     private var isFocused: Bool {
         uiState.isMapFocus
@@ -66,7 +67,11 @@ struct LiveMapView: View {
             recenterIfNeeded()
         }
         .onChange(of: uiState.mapSpan) { _, _ in
-            recenterIfNeeded(force: true)
+            if isFocused {
+                zoomAroundVisibleCenter()
+            } else {
+                recenterIfNeeded(force: true)
+            }
         }
         .onChange(of: uiState.isMapFocus) { _, focused in
             if !focused {
@@ -120,7 +125,8 @@ struct LiveMapView: View {
     }
 
     private var onlineMap: some View {
-        Map(position: $cameraPosition, interactionModes: isFocused ? [.pan, .zoom] : []) {
+        // The crown zooms through `mapSpan`, so the map itself only pans.
+        Map(position: $cameraPosition, interactionModes: isFocused ? [.pan] : []) {
             if let route = viewModel.routePackage {
                 let progress = viewModel.navigationSnapshot?.progressDistanceMeters ?? 0
                 let split = ActiveRouteMapOverlay.splitRouteCoordinates(route, atProgressMeters: progress)
@@ -150,6 +156,9 @@ struct LiveMapView: View {
         }
         .mapStyle(.standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll))
         .mapControlVisibility(.hidden)
+        .onMapCameraChange(frequency: .onEnd) { context in
+            visibleCamera = context.camera
+        }
         .allowsHitTesting(isFocused)
     }
 
@@ -167,8 +176,9 @@ struct LiveMapView: View {
     }
 
     /// Keeps the online map centered on the runner (the canvas maps center themselves).
+    /// In focus mode the user pans freely, so only a forced placement (on appear) applies.
     private func recenterIfNeeded(force: Bool = false) {
-        guard preferences.mapDisplayMode == .onlineNative, !isFocused else { return }
+        guard preferences.mapDisplayMode == .onlineNative, force || !isFocused else { return }
         guard let coordinate = viewModel.displayCoordinate ?? viewModel.routePackage?.boundingBox.center else { return }
         guard preferences.mapFollowMode || force else { return }
 
@@ -182,10 +192,23 @@ struct LiveMapView: View {
         }
         viewModel.displayUpdateCoordinator.recordRecenter(at: coordinate)
 
-        let center = ActiveRouteMapOverlay.clLocation(coordinate)
+        moveCamera(to: ActiveRouteMapOverlay.clLocation(coordinate), heading: headingUp ? viewModel.courseDegrees : nil)
+    }
+
+    /// Crown zoom in focus mode: keeps wherever the user panned to and only changes the span.
+    private func zoomAroundVisibleCenter() {
+        guard preferences.mapDisplayMode == .onlineNative else { return }
+        guard let camera = visibleCamera else {
+            recenterIfNeeded(force: true)
+            return
+        }
+        moveCamera(to: camera.centerCoordinate, heading: headingUp ? camera.heading : nil)
+    }
+
+    private func moveCamera(to center: CLLocationCoordinate2D, heading: Double?) {
         let meters = uiState.mapSpan * 111_000
-        if headingUp, let course = viewModel.courseDegrees {
-            cameraPosition = .camera(MapCamera(centerCoordinate: center, distance: meters * 1.2, heading: course, pitch: 0))
+        if let heading {
+            cameraPosition = .camera(MapCamera(centerCoordinate: center, distance: meters * 1.2, heading: heading, pitch: 0))
         } else {
             cameraPosition = .region(MKCoordinateRegion(center: center, latitudinalMeters: meters, longitudinalMeters: meters))
         }
