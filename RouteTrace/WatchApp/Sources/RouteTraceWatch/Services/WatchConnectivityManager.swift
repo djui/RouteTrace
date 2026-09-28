@@ -174,6 +174,10 @@ final class WatchConnectivityManager: NSObject {
     }
 
     private func handleUserInfo(_ userInfo: [String: Any]) async {
+        if let request = RouteStartRequest(dictionary: userInfo) {
+            RouteStartRequests.shared.receive(request)
+            return
+        }
         if let order = RouteOrder(dictionary: userInfo) {
             RouteOrderStore.shared.apply(order)
             return

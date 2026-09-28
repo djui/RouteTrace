@@ -6,6 +6,8 @@ public enum WatchMessageType {
     public static let routePackage = "routePackage"
     /// iPhone → Watch user info: the route was deleted on iPhone.
     public static let routeDeleted = "routeDeleted"
+    /// iPhone → Watch user info: start navigating a route now (Siri or Shortcuts on iPhone).
+    public static let startRoute = "startRoute"
     /// iPhone ↔ Watch user info: the routes were reordered; the newer order wins.
     public static let routeOrder = "routeOrder"
     /// Watch → iPhone: a route archive was installed.

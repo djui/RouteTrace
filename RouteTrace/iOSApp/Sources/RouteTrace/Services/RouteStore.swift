@@ -289,6 +289,41 @@ final class RouteStore: ObservableObject {
         offlineBuildTasks[routeID]?.cancel()
     }
 
+    /// Builds the offline map for a Shortcut and reports errors to it. The app shows the build's
+    /// progress and can cancel it like one started in the app, and never runs two for one route.
+    func buildOfflinePackForShortcut(
+        for entity: RouteEntity,
+        onProgress: @escaping (OfflinePackBuildProgress) -> Void
+    ) async throws {
+        let routeID = entity.id
+        guard offlineBuildTasks[routeID] == nil else { throw RouteStoreError.offlineBuildInProgress }
+
+        offlineBuilds[routeID] = OfflinePackBuildProgress(phase: .generatingTiles, completedTiles: 0, totalTiles: 0)
+        let build = Task {
+            try await self.buildOfflinePack(for: entity) { progress in
+                self.offlineBuilds[routeID] = progress
+                onProgress(progress)
+            }
+        }
+        // Registered so the app shows the build as running and its Cancel button reaches it.
+        offlineBuildTasks[routeID] = Task {
+            await withTaskCancellationHandler {
+                _ = await build.result
+            } onCancel: {
+                build.cancel()
+            }
+        }
+        defer {
+            offlineBuilds[routeID] = nil
+            offlineBuildTasks[routeID] = nil
+        }
+        try await withTaskCancellationHandler {
+            try await build.value
+        } onCancel: {
+            build.cancel()
+        }
+    }
+
     func buildOfflinePack(
         for entity: RouteEntity,
         onProgress: ((OfflinePackBuildProgress) -> Void)? = nil
@@ -582,11 +617,14 @@ enum RouteStoreError: Error, LocalizedError {
     case routePackageUnavailable
     case sourceGPXUnavailable
     case offlinePackSavedArchiveFailed
+    case offlineBuildInProgress
     case emptyRouteName
     case emptyActivityTitle
 
     var errorDescription: String? {
         switch self {
+        case .offlineBuildInProgress:
+            "The offline map for this route is already downloading."
         case .routeNotFound:
             "The route could not be found."
         case .routePackageUnavailable:
